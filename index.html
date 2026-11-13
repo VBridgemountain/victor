@@ -1,0 +1,1300 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#02060b">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="VICTOR">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-180.png">
+<title>V.I.C.T.O.R. — NoirLab</title>
+<style>
+:root{
+  --rgb:0,216,255;
+  --accent:rgb(var(--rgb));
+  --bg:#02060b;
+  --text:color-mix(in srgb,var(--accent) 22%,#fff);
+  --dim:color-mix(in srgb,var(--accent) 45%,#8a98a3);
+  --line:rgba(var(--rgb),.32);
+  --panel:rgba(var(--rgb),.055);
+  --warn:#ff5a4d;
+  --mono:Consolas,"Cascadia Mono","SF Mono",Menlo,monospace;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;overflow:hidden;overscroll-behavior:none;touch-action:manipulation}
+body{
+  background:
+    radial-gradient(ellipse at 50% 50%,rgba(var(--rgb),.10),transparent 55%),
+    radial-gradient(ellipse at 50% 120%,rgba(var(--rgb),.12),transparent 50%),
+    var(--bg);
+  color:var(--text);
+  font:14px/1.45 "Segoe UI",system-ui,-apple-system,sans-serif;
+  user-select:none;
+}
+body::after{ /* scanlines */
+  content:"";position:fixed;inset:0;pointer-events:none;z-index:40;
+  background:repeating-linear-gradient(0deg,rgba(255,255,255,.018) 0 1px,transparent 1px 3px);
+}
+button,input,textarea,select{font:inherit;color:inherit}
+input,textarea{user-select:text}
+#globe{position:fixed;inset:0;width:100%;height:100%;z-index:0;cursor:grab;touch-action:none}
+body.dragging #globe,body.dragging .app{cursor:grabbing}
+
+/* ---------- apps on the globe ---------- */
+#apps{position:fixed;inset:0;z-index:1;pointer-events:none}
+.app{
+  position:absolute;left:0;top:0;width:62px;pointer-events:auto;cursor:pointer;
+  display:flex;flex-direction:column;align-items:center;gap:5px;
+  background:none;border:0;padding:0;will-change:transform,opacity;touch-action:none;
+}
+.app .ico{
+  width:56px;height:56px;border-radius:50%;display:grid;place-items:center;
+  font-size:25px;line-height:1;
+  background:radial-gradient(circle at 50% 35%,rgba(var(--rgb),.28),rgba(2,6,11,.85) 70%);
+  border:1px solid var(--line);
+  box-shadow:0 0 14px rgba(var(--rgb),.25),inset 0 0 12px rgba(var(--rgb),.18);
+  transition:box-shadow .2s,border-color .2s,transform .2s;
+}
+.app .lbl{
+  font:11px var(--mono);letter-spacing:.12em;text-transform:uppercase;white-space:nowrap;
+  color:var(--text);text-shadow:0 0 8px rgba(var(--rgb),.9),0 0 2px #000;
+}
+.app:hover .ico,.app.focus .ico,.app:focus-visible .ico{
+  border-color:var(--accent);transform:scale(1.12);
+  box-shadow:0 0 26px rgba(var(--rgb),.75),inset 0 0 16px rgba(var(--rgb),.4);
+}
+.app:focus-visible{outline:none}
+
+/* ---------- idéer (inuti globen) + översikt (flera globar) ---------- */
+#ov{position:fixed;inset:0;z-index:1;pointer-events:none}
+#ideas{position:fixed;left:50%;transform:translateX(-50%);z-index:1;width:min(780px,calc(100vw - 40px));pointer-events:none;
+  display:flex;flex-wrap:wrap;gap:10px;justify-content:center;align-content:flex-start;overflow:hidden}
+#apps,#ideas,.gl{--accent:rgb(var(--rgb));--line:rgba(var(--rgb),.32)}
+.off>*{pointer-events:none!important}
+.idea{position:relative;max-width:230px;pointer-events:auto;
+  padding:9px 30px 9px 12px;background:rgba(2,8,14,.82);border:1px solid var(--line);color:var(--text);
+  font-size:13px;line-height:1.35;overflow-wrap:anywhere;
+  clip-path:polygon(8px 0,100% 0,100% calc(100% - 8px),calc(100% - 8px) 100%,0 100%,0 8px)}
+.idea .ib{position:absolute;right:3px;top:6px}
+.idea{cursor:pointer;transition:border-color .2s}
+.idea:hover,.idea:focus-visible{border-color:var(--accent);outline:none}
+.cnt{display:inline-block;margin-left:7px;font:10px var(--mono);color:var(--accent)}
+/* mindmap: en idé i mitten, underidéerna i omlopp */
+#mind{position:fixed;inset:0;z-index:1;pointer-events:none;--accent:rgb(var(--rgb));--line:rgba(var(--rgb),.32)}
+.mnode{position:absolute;left:0;top:0;max-width:200px;pointer-events:auto;cursor:pointer;touch-action:none;
+  padding:9px 14px;background:rgba(2,8,14,.88);border:1px solid var(--line);border-radius:18px;color:var(--text);
+  font-size:13px;line-height:1.35;text-align:center;overflow-wrap:anywhere;transition:border-color .2s,box-shadow .2s}
+.mnode:hover,.mnode:focus-visible{border-color:var(--accent);box-shadow:0 0 22px rgba(var(--rgb),.5);outline:none}
+.mnode .ib{position:absolute;right:-7px;top:-9px;opacity:0;background:rgba(2,8,14,.95);border:1px solid var(--line);border-radius:50%;padding:3px 5px;font-size:11px}
+.mnode:hover .ib,.mnode .ib:focus-visible{opacity:1}
+.mtitle{position:absolute;left:0;top:0;max-width:300px;pointer-events:auto;text-align:center;cursor:text;user-select:text;outline:none;
+  font:600 19px/1.25 "Segoe UI",system-ui,sans-serif;color:#fff;padding:24px 36px;overflow-wrap:anywhere;
+  background:radial-gradient(closest-side,rgba(2,6,11,.82),rgba(2,6,11,0));text-shadow:0 0 14px rgba(var(--rgb),.9)}
+#crumbs{position:fixed;left:50%;top:58px;transform:translateX(-50%);z-index:6;display:none;gap:6px;align-items:center;flex-wrap:wrap;
+  justify-content:center;width:max-content;max-width:calc(100vw - 40px);font:11px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
+#crumbs.on{display:flex}
+#crumbs button{background:none;border:0;color:var(--text);cursor:pointer;font:inherit;letter-spacing:inherit;text-transform:inherit;padding:3px 5px}
+#crumbs button:hover,#crumbs button:focus-visible{color:#fff;text-shadow:0 0 8px var(--accent);outline:none}
+#crumbs b{color:var(--accent)}
+textarea.in{resize:vertical;line-height:1.45;font-family:inherit;display:block}
+.gl{position:absolute;left:0;top:0;border-radius:50%;background:none;border:1px solid transparent;pointer-events:auto;
+  cursor:pointer;padding:0;touch-action:none;transition:border-color .2s,box-shadow .2s}
+.gl:hover,.gl:focus-visible,.gl.cur{border-color:var(--line);outline:none;
+  box-shadow:0 0 30px rgba(var(--rgb),.25),inset 0 0 30px rgba(var(--rgb),.12)}
+.gl .gname{position:absolute;left:50%;top:calc(100% + 8px);transform:translateX(-50%);white-space:nowrap;text-align:center;
+  font:600 12px var(--mono);letter-spacing:.24em;text-transform:uppercase;color:#fff;text-shadow:0 0 10px rgba(var(--rgb),.9)}
+.gl .gcount{display:block;font-weight:400;font-size:10px;color:var(--dim);letter-spacing:.16em;margin-top:3px}
+.gl.far .gname{display:none}
+#ovAdd{position:absolute;left:50%;bottom:64px;transform:translateX(-50%);pointer-events:auto;z-index:200}
+#ideaBar{position:fixed;left:50%;bottom:58px;transform:translateX(-50%);z-index:6;width:min(460px,calc(100vw - 40px));display:none;gap:8px}
+#ideaBar.on{display:flex}
+#ideaBar .in{background:rgba(2,8,14,.85)}
+#levels{position:fixed;right:22px;bottom:20px;z-index:6;display:flex;gap:4px}
+#levels .hbtn{padding:6px 10px;font-size:10px}
+.hbtn.on,.btn.on{background:rgba(var(--rgb),.34);color:#fff}
+.gtabs{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px}
+
+/* ---------- HUD chrome ---------- */
+#top{position:fixed;left:0;right:0;top:0;z-index:6;display:flex;align-items:center;gap:18px;
+  padding:14px 22px;pointer-events:none}
+#top>*{pointer-events:auto}
+#logo{font:600 17px var(--mono);letter-spacing:.42em;color:var(--accent);text-shadow:0 0 14px rgba(var(--rgb),.8)}
+#logo small{display:block;margin-top:2px;font:400 9px var(--mono);letter-spacing:.34em;text-transform:uppercase;color:var(--dim);text-shadow:none}
+.tagline{font:11px var(--mono);letter-spacing:.2em;text-transform:uppercase;color:var(--accent);margin:0 0 14px}
+#greet{font:12px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--dim);flex:1;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hbtn{
+  background:var(--panel);border:1px solid var(--line);color:var(--text);cursor:pointer;
+  font:11px var(--mono);letter-spacing:.16em;text-transform:uppercase;padding:8px 13px;
+  clip-path:polygon(8px 0,100% 0,100% calc(100% - 8px),calc(100% - 8px) 100%,0 100%,0 8px);
+  transition:background .15s,color .15s;
+}
+.hbtn:hover,.hbtn:focus-visible{background:rgba(var(--rgb),.22);color:#fff;outline:none}
+#readout{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);z-index:2;pointer-events:none;
+  font:11px var(--mono);letter-spacing:.3em;text-transform:uppercase;color:var(--dim);text-align:center;white-space:nowrap}
+#readout b{color:var(--accent);font-weight:600;text-shadow:0 0 10px rgba(var(--rgb),.8)}
+.corner{position:fixed;width:46px;height:46px;border:1px solid var(--line);z-index:2;pointer-events:none;opacity:.7}
+.corner.tl{left:8px;top:8px;border-right:0;border-bottom:0}
+.corner.tr{right:8px;top:8px;border-left:0;border-bottom:0}
+.corner.bl{left:8px;bottom:8px;border-right:0;border-top:0}
+.corner.br{right:8px;bottom:8px;border-left:0;border-top:0}
+
+/* ---------- widgets ---------- */
+#widgets{position:fixed;inset:0;z-index:5;pointer-events:none}
+.widget{
+  position:absolute;pointer-events:auto;width:270px;
+  background:linear-gradient(180deg,rgba(var(--rgb),.09),rgba(var(--rgb),.03)),rgba(2,8,14,.72);
+  border:1px solid var(--line);backdrop-filter:blur(6px);
+  box-shadow:0 0 22px rgba(var(--rgb),.10),inset 0 0 30px rgba(var(--rgb),.04);
+  clip-path:polygon(12px 0,100% 0,100% calc(100% - 12px),calc(100% - 12px) 100%,0 100%,0 12px);
+  animation:wIn .35s ease-out;
+}
+@keyframes wIn{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:none}}
+.w-head{display:flex;align-items:center;gap:8px;padding:7px 8px 6px 16px;cursor:move;touch-action:none;
+  border-bottom:1px solid rgba(var(--rgb),.18)}
+.w-title{flex:1;font:10.5px var(--mono);letter-spacing:.26em;text-transform:uppercase;color:var(--accent)}
+.w-title::before{content:"";display:inline-block;width:6px;height:6px;background:var(--accent);margin-right:8px;
+  box-shadow:0 0 8px var(--accent);animation:blink 2.4s infinite}
+@keyframes blink{50%{opacity:.25}}
+.ib{background:none;border:0;color:var(--dim);cursor:pointer;padding:2px 6px;font-size:14px;line-height:1;border-radius:3px}
+.ib:hover,.ib:focus-visible{color:#fff;background:rgba(var(--rgb),.22);outline:none}
+.w-body{padding:11px 14px 14px}
+.muted{color:var(--dim);font-size:12px}
+.mono{font-family:var(--mono)}
+.row{display:flex;align-items:center;gap:8px}
+.in{
+  width:100%;min-width:0;background:rgba(var(--rgb),.07);border:1px solid rgba(var(--rgb),.25);
+  padding:6px 8px;color:var(--text);outline:none;border-radius:2px;
+}
+.in:focus{border-color:var(--accent);box-shadow:0 0 0 1px rgba(var(--rgb),.35)}
+.in::placeholder{color:var(--dim);opacity:.75}
+input[type=datetime-local].in{color-scheme:dark;font-size:12px}
+.btn{background:rgba(var(--rgb),.16);border:1px solid var(--line);padding:6px 10px;cursor:pointer;white-space:nowrap;
+  font:11px var(--mono);letter-spacing:.12em;text-transform:uppercase;border-radius:2px}
+.btn:hover,.btn:focus-visible{background:rgba(var(--rgb),.34);color:#fff;outline:none}
+.btn.danger{border-color:rgba(255,90,77,.5);background:rgba(255,90,77,.12)}
+.list{list-style:none;margin:0 0 9px;padding:0;max-height:210px;overflow:auto}
+.list li{display:flex;align-items:center;gap:8px;padding:5px 2px;border-bottom:1px dashed rgba(var(--rgb),.14)}
+.list li .ib{opacity:0}
+.list li:hover .ib,.list li .ib:focus-visible{opacity:1}
+.list::-webkit-scrollbar,.modal-body::-webkit-scrollbar{width:6px}
+.list::-webkit-scrollbar-thumb,.modal-body::-webkit-scrollbar-thumb{background:rgba(var(--rgb),.35)}
+.grow{flex:1;min-width:0;overflow-wrap:anywhere}
+/* clock */
+.clock-t{font:300 46px/1 var(--mono);letter-spacing:.04em;color:#fff;text-shadow:0 0 18px rgba(var(--rgb),.75);font-variant-numeric:tabular-nums}
+.clock-t small{font-size:20px;color:var(--accent);margin-left:4px}
+.clock-d{margin-top:8px;font:12px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
+/* weather */
+.wx-main{display:flex;align-items:center;gap:12px}
+.wx-ico{font-size:40px;line-height:1;filter:drop-shadow(0 0 10px rgba(var(--rgb),.6))}
+.wx-temp{font:300 38px/1 var(--mono);color:#fff;text-shadow:0 0 14px rgba(var(--rgb),.7)}
+.wx-days{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:11px}
+.wx-day{border:1px solid rgba(var(--rgb),.18);padding:6px 4px;text-align:center;font:11px var(--mono)}
+.wx-day .e{font-size:18px;display:block;margin:2px 0}
+/* links */
+.lnk{color:var(--text);text-decoration:none;display:block}
+.lnk:hover,.lnk:focus-visible{color:#fff;text-shadow:0 0 8px var(--accent);outline:none}
+.lnk::before{content:"▸ ";color:var(--accent)}
+/* reminders */
+.rem.done .grow{text-decoration:line-through;opacity:.45}
+.rem.due .rt{color:var(--warn)}
+.rt{display:block;font:10.5px var(--mono);letter-spacing:.08em;color:var(--dim);text-transform:uppercase}
+.chk{appearance:none;width:15px;height:15px;border:1px solid var(--accent);cursor:pointer;flex:none;margin:0;display:grid;place-items:center}
+.chk:checked::after{content:"";width:9px;height:9px;background:var(--accent);box-shadow:0 0 8px var(--accent)}
+/* notes */
+.notes{width:100%;height:130px;resize:vertical;line-height:1.5}
+/* system */
+.bar{height:5px;background:rgba(var(--rgb),.14);margin:4px 0 9px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--accent);box-shadow:0 0 10px var(--accent);transition:width .6s}
+.kv{display:flex;justify-content:space-between;font:11.5px var(--mono);letter-spacing:.08em;text-transform:uppercase}
+.kv span:first-child{color:var(--dim)}
+/* timer */
+.tm{font:300 40px/1 var(--mono);color:#fff;text-shadow:0 0 14px rgba(var(--rgb),.7);font-variant-numeric:tabular-nums;margin-bottom:10px}
+
+/* ---------- modal ---------- */
+#modal{position:fixed;inset:0;z-index:20;display:none;place-items:center;background:rgba(1,4,8,.62);backdrop-filter:blur(3px)}
+#modal.open{display:grid}
+.modal{width:min(620px,calc(100vw - 32px));max-height:calc(100vh - 60px);display:flex;flex-direction:column;
+  background:rgba(3,10,17,.96);border:1px solid var(--accent);box-shadow:0 0 50px rgba(var(--rgb),.3);
+  clip-path:polygon(16px 0,100% 0,100% calc(100% - 16px),calc(100% - 16px) 100%,0 100%,0 16px)}
+.modal-head{display:flex;align-items:center;padding:12px 12px 10px 20px;border-bottom:1px solid var(--line)}
+.modal-head h2{flex:1;margin:0;font:600 12px var(--mono);letter-spacing:.3em;text-transform:uppercase;color:var(--accent)}
+.modal-body{padding:16px 20px 20px;overflow:auto}
+.field{margin-bottom:16px}
+.field>label,.flabel{display:block;font:10.5px var(--mono);letter-spacing:.2em;text-transform:uppercase;color:var(--dim);margin-bottom:7px}
+.swatches{display:flex;flex-wrap:wrap;gap:9px;align-items:center}
+.sw{width:30px;height:30px;border-radius:50%;border:2px solid transparent;cursor:pointer;padding:0;box-shadow:0 0 12px currentColor}
+.sw.on,.sw:focus-visible{border-color:#fff;outline:none}
+input[type=color]{width:42px;height:32px;padding:0;border:1px solid var(--line);background:none;cursor:pointer}
+input[type=range]{width:100%;accent-color:var(--accent)}
+.wgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px}
+.wpick{text-align:left;padding:12px;background:var(--panel);border:1px solid var(--line);cursor:pointer}
+.wpick:hover,.wpick:focus-visible{background:rgba(var(--rgb),.2);outline:none}
+.wpick b{display:block;font:600 12px var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--accent);margin-bottom:4px}
+.wpick .e{font-size:20px;float:right}
+.arow{display:grid;grid-template-columns:52px 1fr 1.6fr auto;gap:7px;margin-bottom:7px}
+.arow .in:first-child{text-align:center;font-size:17px;padding:3px}
+
+/* ---------- toasts ---------- */
+#toasts{position:fixed;left:50%;top:64px;transform:translateX(-50%);z-index:30;display:flex;flex-direction:column;gap:8px;align-items:center}
+.toast{background:rgba(3,10,17,.95);border:1px solid var(--accent);padding:11px 16px;display:flex;gap:14px;align-items:center;
+  box-shadow:0 0 30px rgba(var(--rgb),.45);font:12px var(--mono);letter-spacing:.1em;max-width:min(520px,90vw);animation:wIn .3s}
+.toast b{color:var(--accent);letter-spacing:.2em}
+/* ---------- telefon / smala fönster ---------- */
+#bDrawer{display:none}
+@media (hover:none){.list li .ib,.mnode .ib{opacity:1}}
+@media (max-width:760px){
+  #top{flex-wrap:wrap;gap:7px;padding:calc(10px + env(safe-area-inset-top)) 12px 0}
+  #logo{flex:1 0 100%;font-size:15px}
+  #greet,#bFull,.corner{display:none}
+  #bDrawer{display:block}
+  .hbtn{padding:7px 9px;font-size:10px;letter-spacing:.1em}
+  /* widgets ligger i en låda som fälls upp från nederkanten */
+  #widgets{inset:auto 0 0 0;z-index:15;max-height:72vh;overflow:auto;pointer-events:auto;display:flex;flex-direction:column;gap:10px;
+    padding:14px 12px calc(14px + env(safe-area-inset-bottom));background:rgba(2,8,14,.97);border-top:1px solid var(--accent);
+    transform:translateY(105%);transition:transform .28s ease}
+  body.wopen #widgets{transform:none}
+  .widget{position:static;width:auto;flex:none;clip-path:none;animation:none}
+  .w-head{cursor:default}
+  #readout{bottom:calc(52px + env(safe-area-inset-bottom));width:calc(100vw - 24px);white-space:normal;font-size:10px;letter-spacing:.14em}
+  #levels{right:50%;transform:translateX(50%);bottom:calc(12px + env(safe-area-inset-bottom))}
+  #ideaBar{bottom:calc(92px + env(safe-area-inset-bottom))}
+  #ovAdd{bottom:calc(104px + env(safe-area-inset-bottom))}
+  #crumbs{top:calc(88px + env(safe-area-inset-top))}
+  .mnode{max-width:124px;font-size:12px;padding:7px 10px}
+  .mtitle{max-width:170px;font-size:15px;padding:16px 20px}
+  .arow{grid-template-columns:44px 1fr auto}
+  .arow .in:nth-child(3){grid-column:1 / 3;grid-row:2}
+  .arow .btn{grid-column:3;grid-row:1}
+  .toast{font-size:11px}
+}
+@media (prefers-reduced-motion:reduce){.widget,.toast{animation:none}.w-title::before{animation:none}}
+</style>
+</head>
+<body>
+<canvas id="globe"></canvas>
+<div id="apps"></div><div id="ideas"></div><div id="ov"></div><div id="mind"></div>
+<nav id="crumbs" aria-label="Var du är i mindmappen"></nav>
+<form id="ideaBar"><input class="in" id="ideaIn" placeholder="Ny idé eller anteckning i den här globen…" aria-label="Ny idé"><button class="btn">Lägg till</button><button type="button" class="btn on" id="bClaude" title="Få hjälp av Claude med den här grenen">✦ Claude</button></form>
+<div id="levels" role="group" aria-label="Zoomnivå"><button class="hbtn" data-z="0.3">Översikt</button><button class="hbtn" data-z="1">Glob</button><button class="hbtn" data-z="2.6">Inuti</button></div>
+<div class="corner tl"></div><div class="corner tr"></div><div class="corner bl"></div><div class="corner br"></div>
+
+<header id="top">
+  <div id="logo" title="Visionary Interface for Creative Thinking, Organisation & Research">V.I.C.T.O.R.<small>by NoirLab</small></div>
+  <div id="greet"></div>
+  <button class="hbtn" id="bDrawer" aria-controls="widgets">Widgets</button>
+  <button class="hbtn" id="bWidget">+ Widget</button>
+  <button class="hbtn" id="bApps">Glober</button>
+  <button class="hbtn" id="bSettings">Inställningar</button>
+  <button class="hbtn" id="bFull" title="Helskärm">⛶</button>
+</header>
+
+<div id="widgets"></div>
+<div id="readout"></div>
+<div id="toasts"></div>
+<div id="modal"><div class="modal" role="dialog" aria-modal="true">
+  <div class="modal-head"><h2 id="mTitle"></h2><button class="ib" id="mClose" aria-label="Stäng">✕</button></div>
+  <div class="modal-body" id="mBody"></div>
+</div></div>
+
+<script>
+'use strict';
+/* =====================================================================
+   Helpers
+   ===================================================================== */
+const $ = (s, r = document) => r.querySelector(s);
+const TAU = Math.PI * 2;
+const uid = () => Math.random().toString(36).slice(2, 9);
+function el(tag, props, ...kids) {
+  const e = document.createElement(tag);
+  for (const k in (props || {})) {
+    const v = props[k];
+    if (k === 'class') e.className = v;
+    else if (k === 'text') e.textContent = v;
+    else if (k.startsWith('on')) e.addEventListener(k.slice(2), v);
+    else if (k in e) e[k] = v;
+    else e.setAttribute(k, v);
+  }
+  for (const c of kids.flat()) if (c != null) e.append(c);
+  return e;
+}
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+
+/* =====================================================================
+   State (sparas i localStorage)
+   ===================================================================== */
+const KEY = 'jarvis-desktop-v1';
+const mkApp = (icon, name, url) => ({ id: uid(), icon, name, url });
+const newGlobe = (name, color, apps, ideas) => ({ id: uid(), name: name || 'Ny glob', color: color || '', apps: apps || [], ideas: (ideas || []).map(t => typeof t === 'string' ? { id: uid(), text: t, children: [] } : t) });
+const I = (text, ...children) => ({ id: uid(), text, children });   // en idé med underidéer
+function defaults() {
+  const W = innerWidth, H = innerHeight;
+  return {
+    name: '',
+    theme: '#00d8ff',
+    particles: 4500,
+    autoRotate: true,
+    active: 0,
+    globes: [
+     newGlobe('Kreativitet', '#ff4fd8', [
+      mkApp('🎨', 'Figma', 'https://www.figma.com'), mkApp('🖌️', 'Canva', 'https://www.canva.com'),
+      mkApp('🖼️', 'Photopea', 'https://www.photopea.com'), mkApp('📌', 'Pinterest', 'https://www.pinterest.com'),
+      mkApp('🎞️', 'CapCut', 'https://www.capcut.com'), mkApp('🎹', 'BandLab', 'https://www.bandlab.com') ]),
+     newGlobe('AI & utveckling', '#00ffa2', [
+      mkApp('🤖', 'Claude', 'https://claude.ai'), mkApp('🐙', 'GitHub', 'https://github.com'),
+      mkApp('💻', 'VS Code', 'vscode:'), mkApp('🚂', 'Railway', 'https://railway.app'),
+      mkApp('⚡', 'Supabase', 'https://supabase.com/dashboard'), mkApp('💳', 'Stripe', 'https://dashboard.stripe.com'),
+      mkApp('📚', 'MDN', 'https://developer.mozilla.org') ]),
+     newGlobe('Spel', '#ff7a1a', [
+      mkApp('🎮', 'Steam', 'steam://open/main'), mkApp('💬', 'Discord', 'discord://'),
+      mkApp('📺', 'Twitch', 'https://www.twitch.tv'), mkApp('🕹️', 'Epic', 'com.epicgames.launcher://'),
+      mkApp('❎', 'Xbox', 'xbox:') ]),
+     newGlobe('Brainstorm', '#ffb300', [
+      mkApp('✏️', 'Excalidraw', 'https://excalidraw.com'), mkApp('🧩', 'Miro', 'https://miro.com'),
+      mkApp('🗒️', 'Notion', 'https://www.notion.so'), mkApp('🧠', 'tldraw', 'https://www.tldraw.com') ],
+      [I('Hemsida', I('Webshop',
+          I('Vad ska den innehålla?', I('Kläder'), I('Kamerautrustning'), I('Filminspelningssaker'), I('Väskor')),
+          I('Betalning', I('Med vad?'), I('Hur?')))),
+       'Klicka på en idé för att zooma in i den']),
+     { id: uid(), name: 'Vardag', color: '', ideas: [], apps: [
+      { id: uid(), icon: '▶️', name: 'YouTube',  url: 'https://www.youtube.com' },
+      { id: uid(), icon: '✉️', name: 'Gmail',    url: 'https://mail.google.com' },
+      { id: uid(), icon: '📅', name: 'Kalender', url: 'https://calendar.google.com' },
+      { id: uid(), icon: '🎵', name: 'Spotify',  url: 'spotify:' },
+      { id: uid(), icon: '🐙', name: 'GitHub',   url: 'https://github.com' },
+      { id: uid(), icon: '🗺️', name: 'Kartor',   url: 'https://maps.google.com' },
+      { id: uid(), icon: '🤖', name: 'Claude',   url: 'https://claude.ai' },
+      { id: uid(), icon: '💻', name: 'VS Code',  url: 'vscode:' },
+      { id: uid(), icon: '⚙️', name: 'Windows',  url: 'ms-settings:' },
+      { id: uid(), icon: '🧮', name: 'Kalkyl',   url: 'calculator:' },
+      { id: uid(), icon: '🎬', name: 'Netflix',  url: 'https://www.netflix.com' },
+      { id: uid(), icon: '📁', name: 'Drive',    url: 'https://drive.google.com' },
+     ] },
+    ],
+    reminders: [],
+    widgets: [
+      { id: uid(), type: 'clock',     x: 26, y: 76, data: {} },
+      { id: uid(), type: 'weather',   x: 26, y: 232, data: { name: 'Stockholm', lat: 59.33, lon: 18.07 } },
+      { id: uid(), type: 'system',    x: 26, y: Math.max(470, H - 230), data: {} },
+      { id: uid(), type: 'reminders', x: W - 296, y: 76, data: {} },
+      { id: uid(), type: 'links',     x: W - 296, y: 350, data: { links: [
+          { name: 'Nyheter — SVT', url: 'https://www.svt.se' },
+          { name: 'Wikipedia', url: 'https://sv.wikipedia.org' } ] } },
+    ],
+  };
+}
+let state, firstRun = false;
+try { firstRun = !localStorage.getItem(KEY); } catch {}
+try {
+  const s = JSON.parse(localStorage.getItem(KEY) || '{}');
+  state = Object.assign(defaults(), s);
+  if (s.apps && !s.globes) state.globes[state.globes.length - 1].apps = s.apps;   // äldre sparformat
+  delete state.apps;
+  if (!Array.isArray(state.globes) || !state.globes.length) state.globes = defaults().globes;
+} catch { state = defaults(); }
+const G = () => state.globes[state.active] || state.globes[state.active = 0];
+const hexRgb = h => { const m = /^#?([0-9a-f]{6})$/i.exec(h || ''); if (!m) return null;
+  const n = parseInt(m[1], 16); return [n >> 16, (n >> 8) & 255, n & 255]; };
+let saveT;
+function save() {
+  clearTimeout(saveT);
+  saveT = setTimeout(() => { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch {} }, 150);
+}
+
+/* =====================================================================
+   Tema
+   ===================================================================== */
+let RGB = [0, 216, 255];
+function setTheme(hex) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex); if (!m) return;
+  const n = parseInt(m[1], 16);
+  RGB = [n >> 16, (n >> 8) & 255, n & 255];
+  document.documentElement.style.setProperty('--rgb', RGB.join(','));
+  state.theme = '#' + m[1].toLowerCase(); save();
+}
+setTheme(state.theme);
+
+/* =====================================================================
+   Partikelglob
+   ===================================================================== */
+const cv = $('#globe'), ctx = cv.getContext('2d');
+let W = 0, H = 0, CX = 0, CY = 0, R = 200, zoom = 1, zt = 1;   // zoom: 0.3 = översikt, 1 = glob, 2.6 = inuti
+const sstep = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
+function slot(j) {   // globens plats i översikten
+  const n = state.globes.length; if (n === 1) return { x: W / 2, y: H / 2 };
+  const a = -Math.PI / 2 + j * TAU / n;
+  return { x: W / 2 + Math.cos(a) * Math.min(W * 0.34, H * 0.55), y: H / 2 - 6 + Math.sin(a) * H * 0.26 };
+}
+const FOCAL = 3.2, APP_R = 1.2;
+function resize() {
+  const d = Math.min(devicePixelRatio || 1, 2);
+  W = innerWidth; H = innerHeight;
+  cv.width = W * d; cv.height = H * d;
+  ctx.setTransform(d, 0, 0, d, 0, 0);
+}
+addEventListener('resize', () => {
+  const oldW = W; resize();
+  // widgets på högra halvan följer med högerkanten när fönstret ändrar storlek
+  if (isMobile()) return;   // på telefon ligger widgets i lådan och har ingen egen position
+  for (const { w, node } of mounted.values()) if (w.x + node.offsetWidth / 2 > oldW / 2) w.x += W - oldW;
+  clampWidgets(); save();
+});
+
+// rotationsmatris (rad-ordning)
+let M = [1, 0, 0, 0, 1, 0, 0, 0, 1];
+function rotate(ax, ay) {
+  const c1 = Math.cos(ay), s1 = Math.sin(ay), c2 = Math.cos(ax), s2 = Math.sin(ax);
+  const A = [c1, 0, s1, s2 * s1, c2, -s2 * c1, -c2 * s1, s2, c2 * c1]; // Rx·Ry
+  const m = M, o = new Array(9);
+  for (let r = 0; r < 3; r++) for (let c = 0; c < 3; c++)
+    o[r * 3 + c] = A[r * 3] * m[c] + A[r * 3 + 1] * m[3 + c] + A[r * 3 + 2] * m[6 + c];
+  M = o;
+}
+function orthonormalize() {
+  const m = M;
+  let l = Math.hypot(m[0], m[1], m[2]); m[0] /= l; m[1] /= l; m[2] /= l;
+  let d = m[0] * m[3] + m[1] * m[4] + m[2] * m[5];
+  m[3] -= d * m[0]; m[4] -= d * m[1]; m[5] -= d * m[2];
+  l = Math.hypot(m[3], m[4], m[5]); m[3] /= l; m[4] /= l; m[5] /= l;
+  m[6] = m[1] * m[5] - m[2] * m[4]; m[7] = m[2] * m[3] - m[0] * m[5]; m[8] = m[0] * m[4] - m[1] * m[3];
+}
+rotate(-0.35, 0.5);
+
+let N = 0, P = null; // partikeldata
+function initParticles() {
+  N = state.particles | 0;
+  const f = () => new Float32Array(N);
+  P = { bx: f(), by: f(), bz: f(), rf: f(), px: f(), py: f(), pz: f(), vx: f(), vy: f(), vz: f(),
+        k: f(), ph: f(), sz: f(), sx: f(), sy: f(), br: f(), tw: f(), cg: new Uint8Array(N), star: new Uint8Array(N) };
+  const golden = Math.PI * (3 - Math.sqrt(5));
+  for (let i = 0; i < N; i++) {
+    const y = 1 - (i + 0.5) * 2 / N, r = Math.sqrt(1 - y * y), th = i * golden;
+    P.bx[i] = Math.cos(th) * r; P.by[i] = y; P.bz[i] = Math.sin(th) * r;
+    const u = Math.random();
+    // stjärnstoft: ett luddigt skal, en gles halo utanför och lite damm inuti
+    P.rf[i] = u < 0.76 ? 1 + (Math.random() + Math.random() - 1) * 0.075
+            : u < 0.93 ? 1.04 + Math.pow(Math.random(), 2) * 0.5 : 0.3 + Math.random() * 0.6;
+    P.k[i] = 0.03 + Math.random() * 0.12;
+    P.ph[i] = Math.random() * TAU;
+    P.sz[i] = 0.6 + Math.pow(Math.random(), 3) * 1.7;             // de flesta mycket fina, några få större korn
+    P.br[i] = 0.55 + Math.random() * 0.45;                        // egen ljusstyrka
+    P.tw[i] = 0.5 + Math.random() * 2.8;                          // glimmerhastighet
+    const c = Math.random(); P.cg[i] = c < 0.6 ? 0 : c < 0.86 ? 1 : 2;   // temafärg / vitare / varm ton
+    P.star[i] = Math.random() < 0.014 ? 1 : 0;                   // enstaka lysande stjärnor
+    // startar utspridda och "samlas" till en glob
+    const a = Math.random() * TAU, b = Math.acos(2 * Math.random() - 1), d = 2.5 + Math.random() * 3;
+    P.px[i] = Math.sin(b) * Math.cos(a) * d; P.py[i] = Math.sin(b) * Math.sin(a) * d; P.pz[i] = Math.cos(b) * d * 0.4;
+    P.sx[i] = NaN;
+  }
+}
+
+// interaktion
+let dragging = false, moved = 0, lastX = 0, lastY = 0, pendX = 0, pendY = 0;
+let velX = 0, velY = 0, energy = 0, mouseX = -9999, mouseY = -9999, hoverApp = false, ringA = 0, T = 0;
+const isMobile = () => innerWidth <= 760;
+const touches = new Map(); let pinchD = 0;   // aktiva fingrar, för nypzoom
+function onDown(e) {
+  if (e.button !== 0) return;
+  touches.set(e.pointerId, { x: e.clientX, y: e.clientY }); pinchD = 0;
+  document.body.classList.remove('wopen');
+  dragging = true; moved = 0; lastX = e.clientX; lastY = e.clientY; pendX = pendY = 0; wheel0 = wheel;
+  document.body.classList.add('dragging');
+}
+cv.addEventListener('pointerdown', onDown);
+addEventListener('pointermove', e => {
+  mouseX = e.clientX; mouseY = e.clientY;
+  if (touches.has(e.pointerId)) touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (touches.size >= 2) {   // två fingrar: nyp för att zooma
+    const [a, b] = [...touches.values()], d = Math.hypot(a.x - b.x, a.y - b.y), r = pinchD ? d / pinchD : 1;
+    if (!pinchD) pinchD = d; else if (r > 1.06 || r < 0.94) { zoomBy(r); pinchD = d; }
+    moved += 10; lastX = e.clientX; lastY = e.clientY; return;
+  }
+  if (!dragging) return;
+  const dx = e.clientX - lastX, dy = e.clientY - lastY;
+  lastX = e.clientX; lastY = e.clientY; moved += Math.abs(dx) + Math.abs(dy);
+  if (level === 0) { pendW -= dx * 1.8 * state.globes.length / (TAU * ovRx()); return; }   // översikt: snurra hjulet
+  pendY += dx * 0.0055; pendX -= dy * 0.0055;
+});
+const endDrag = e => {
+  touches.delete(e.pointerId); pinchD = 0;
+  if (e.pointerType !== 'mouse') mouseX = mouseY = -9999;
+  if (dragging && level === 0) {   // översikt: snäpp till nästa glob i dragriktningen
+    const w = wheel + pendW, d = w - wheel0;
+    wheel = w; pendW = 0; wheelT = d > 0.15 ? Math.ceil(w) : d < -0.15 ? Math.floor(w) : Math.round(w);
+  }
+  dragging = false; document.body.classList.remove('dragging');
+};
+addEventListener('pointerup', endDrag); addEventListener('pointercancel', endDrag);
+document.addEventListener('pointerleave', () => { mouseX = mouseY = -9999; });
+let snapAt = 0;
+function zoomBy(f) {   // f > 1 zoomar in. Snäpper mellan översikt ↔ glob ↔ inuti.
+  if (performance.now() - snapAt < 450) return;
+  if (path.length) {   // i mindmappen: scrolla ut backar en nivå
+    if (f < 1) { setPath(path.slice(0, -1), -0.4); snapAt = performance.now(); }
+    return;
+  }
+  let z = zt * f, snap = true;
+  if (f < 1) { if (zt > 1.5 && z < 2.2) z = 1; else if (z < 0.62) z = 0.3; else snap = false; }
+  else { if (zt < 0.62) { z = 1; enterGlobe(frontGlobe()); } else if (z > 1.5) z = 2.6; else snap = false; }
+  if (snap && z !== zt) snapAt = performance.now();
+  zt = clamp(z, 0.3, 2.6);
+}
+addEventListener('wheel', e => {
+  if (e.target.closest('.widget,#modal,#top,#ideaBar')) return;
+  e.preventDefault(); zoomBy(Math.exp(clamp(-e.deltaY, -150, 150) * 0.0012));
+}, { passive: false });
+function kick(s) { for (let i = 0; i < N; i++) { P.vx[i] += (Math.random() - .5) * s; P.vy[i] += (Math.random() - .5) * s; P.vz[i] += (Math.random() - .5) * s; } }
+let wheel = state.active, pendW = 0, wheelT = null, wheel0 = 0; const bgHits = [];
+const ovRx = () => Math.min(W * 0.36, Math.min(W, H) * 0.7);   // hjulets radie i översikten
+const frontGlobe = () => { const n = state.globes.length; return ((Math.round(wheel) % n) + n) % n; };
+cv.addEventListener('click', e => {   // klick på en bakgrundsglob byter till den
+  if (moved >= 7 || level !== 1) return;
+  for (const h of bgHits) if (Math.hypot(e.clientX - h.x, e.clientY - h.y) < h.r) { enterGlobe(h.j); break; }
+});
+function enterGlobe(j) {
+  if (path.length) setPath([], 0);
+  if (j !== state.active) { state.active = j; save(); buildScene(); kick(0.25); }
+  zt = 1;
+}
+addEventListener('keydown', e => {
+  if (/INPUT|TEXTAREA/.test(document.activeElement.tagName) || document.activeElement.isContentEditable) return;
+  if (level === 0 && e.key === 'ArrowLeft') wheelT = Math.round(wheelT == null ? wheel : wheelT) - 1;
+  else if (level === 0 && e.key === 'ArrowRight') wheelT = Math.round(wheelT == null ? wheel : wheelT) + 1;
+  else if (level === 0 && e.key === 'Enter' && !e.target.closest('button')) enterGlobe(frontGlobe());
+  else if (e.key === 'ArrowLeft') velY = -0.04; else if (e.key === 'ArrowRight') velY = 0.04;
+  else if (e.key === 'ArrowUp') velX = 0.04; else if (e.key === 'ArrowDown') velX = -0.04;
+  else if (e.key === '+') zoomBy(1.15); else if (e.key === '-') zoomBy(0.87);
+  else if (e.key === 'PageDown' || e.key === 'PageUp') { const n = state.globes.length;
+    e.preventDefault(); enterGlobe((state.active + (e.key === 'PageDown' ? 1 : n - 1)) % n); }
+});
+
+// appnoder
+const appsEl = $('#apps'), ideasEl = $('#ideas'), ovEl = $('#ov'), readout = $('#readout'), ideaBar = $('#ideaBar'),
+      mindEl = $('#mind'), crumbs = $('#crumbs');
+const IDEA_R = 0.4;
+let appNodes = [], ideaNodes = [], ovNodes = [], ACT = null, level = -1;
+// brainstorm: path = vägen av idéer man zoomat in genom, im = hur mycket mindmap-vyn syns (0–1)
+let path = [], mindNodes = [], mindTitle = null, im = 0, burst = 0, orbit = 0;
+const fib = (i, n) => { const y = 1 - (i + 0.5) * 2 / n, r = Math.sqrt(1 - y * y), th = i * Math.PI * (3 - Math.sqrt(5));
+  return [Math.cos(th) * r, y, Math.sin(th) * r]; };
+const MB = []; for (let i = 0; i < 520; i++) MB.push(...fib(i, 520));   // punkter för miniglober
+function openUrl(url) {
+  url = (url || '').trim();
+  if (!url || /^\s*javascript:/i.test(url)) return;
+  if (/^https?:\/\//i.test(url)) window.open(url, '_blank', 'noopener');
+  else if (/^[a-z][a-z0-9+.-]*:/i.test(url)) location.href = url;       // protokoll: spotify:, ms-settings: …
+  else window.open('https://' + url, '_blank', 'noopener');
+}
+function buildScene() {
+  state.globes.forEach(g => { g.apps = g.apps || []; g.ideas = g.ideas || []; });
+  const g = G(); ACT = hexRgb(g.color);
+  for (const L of [appsEl, ideasEl, mindEl]) ACT ? L.style.setProperty('--rgb', ACT.join(',')) : L.style.removeProperty('--rgb');
+  appsEl.textContent = ''; ideasEl.textContent = ''; ovEl.textContent = ''; appNodes = [];
+  ideaNodes = g.ideas.map((it, i) => {
+    const c = countDesc(it);
+    const node = el('div', { class: 'idea', role: 'button', tabIndex: 0, title: 'Zooma in i idén',
+      onclick: e => { if (!e.target.closest('button')) setPath([it], 1); },
+      onkeydown: e => { if (e.key === 'Enter' && e.target === node) setPath([it], 1); } },
+      it.text, c ? el('span', { class: 'cnt', text: '+' + c }) : null,
+      el('button', { class: 'ib', text: '✕', 'aria-label': 'Ta bort idé', onclick: () => {
+        if (c && !confirm('Ta bort "' + it.text + '" och dess ' + c + ' underidéer?')) return;
+        g.ideas.splice(g.ideas.indexOf(it), 1); save(); buildScene(); } }));
+    ideasEl.append(node); return { node };
+  });
+  ovNodes = state.globes.map((x, j) => {
+    const rgb = hexRgb(x.color);
+    const node = el('button', { class: 'gl' + (j === state.active ? ' cur' : ''), onpointerdown: onDown,
+      onclick: () => { if (moved < 7) enterGlobe(j); } },
+      el('span', { class: 'gname' }, x.name, el('span', { class: 'gcount', text: x.apps.length + ' appar · ' + x.ideas.length + ' idéer' })));
+    if (rgb) node.style.setProperty('--rgb', rgb.join(','));
+    ovEl.append(node); return { node, rgb };
+  });
+  ovEl.append(el('button', { class: 'hbtn', id: 'ovAdd', text: '+ Ny glob',
+    onclick: () => { state.globes.push(newGlobe()); save(); buildScene(); openApps(state.globes.length - 1); } }));
+  const n = g.apps.length;
+  g.apps.forEach((a, i) => {
+    const [bx0, y, bz0] = fib(i, n);
+    const node = el('button', { class: 'app', title: a.name + ' — ' + a.url,
+      onpointerdown: onDown,
+      onclick: () => { if (moved < 7) openUrl(a.url); },
+      oncontextmenu: e => { e.preventDefault(); openApps(); },
+      onpointerenter: () => hoverApp = true, onpointerleave: () => hoverApp = false },
+      el('span', { class: 'ico', text: a.icon || (a.name || '?')[0].toUpperCase() }),
+      el('span', { class: 'lbl', text: a.name }));
+    appsEl.append(node);
+    appNodes.push({ a, node, i, bx: bx0, by: y, bz: bz0 });
+  });
+  hoverApp = false;
+}
+
+/* ---------- Brainstorm: idéer som ett träd man zoomar in i ---------- */
+const kids = it => it.children || (it.children = []);
+const countDesc = it => kids(it).reduce((s, c) => s + 1 + countDesc(c), 0);
+const curIdea = () => path[path.length - 1] || null;
+const short = (s, n) => s.length > n ? s.slice(0, n - 1) + '…' : s;
+function setPath(p, dir) { path = p; burst = dir; if (N) kick(0.1); buildMind(); }   // dir > 0 = zooma in, < 0 = backa ut
+function buildMind() {
+  const cur = curIdea(); mindEl.textContent = ''; mindNodes = []; mindTitle = null;
+  crumbs.classList.toggle('on', !!cur); crumbs.textContent = '';
+  $('#ideaIn').placeholder = cur ? 'Lägg till under "' + short(cur.text, 28) + '"…' : 'Ny idé eller anteckning i den här globen…';
+  if (!cur) return;
+  crumbs.append(el('button', { text: G().name, onclick: () => setPath([], -0.4) }));
+  path.forEach((it, i) => crumbs.append('›', i === path.length - 1 ? el('b', { text: short(it.text, 30) })
+    : el('button', { text: short(it.text, 30), onclick: () => setPath(path.slice(0, i + 1), -0.4) })));
+  mindTitle = el('div', { class: 'mtitle', contentEditable: 'plaintext-only', spellcheck: false, 'aria-label': 'Idéns namn, går att ändra', text: cur.text,
+    onblur: e => { const t = e.target.textContent.trim();
+      if (t && t !== cur.text) { cur.text = t; save(); buildMind(); buildScene(); } else e.target.textContent = cur.text; },
+    onkeydown: e => { if (e.key === 'Enter') { e.preventDefault(); e.target.blur(); } } });
+  mindEl.append(mindTitle);
+  kids(cur).forEach(it => {
+    const c = countDesc(it);
+    const node = el('div', { class: 'mnode', role: 'button', tabIndex: 0, title: 'Zooma in i idén', onpointerdown: onDown,
+      onclick: e => { if (moved < 7 && !e.target.closest('button')) setPath([...path, it], 1); },
+      onkeydown: e => { if (e.key === 'Enter' && e.target === node) setPath([...path, it], 1); } },
+      it.text, c ? el('span', { class: 'cnt', text: '+' + c }) : null,
+      el('button', { class: 'ib', text: '✕', 'aria-label': 'Ta bort ' + it.text, onclick: () => {
+        if (c && !confirm('Ta bort "' + it.text + '" och dess ' + c + ' underidéer?')) return;
+        cur.children.splice(cur.children.indexOf(it), 1); save(); buildMind(); } }));
+    mindEl.append(node); mindNodes.push({ node, it, w: 0, h: 0 });
+  });
+}
+
+/* ---------- Claude-hjälp: gör grenen till en fråga, och svaret till nya underidéer ---------- */
+function outline(list, d = 0) { return list.map(it => '  '.repeat(d) + '- ' + it.text + '\n' + outline(kids(it), d + 1)).join(''); }
+function parseOutline(text) {   // indragen punktlista → idéträd
+  const root = [], stack = [{ ind: -1, list: root }];
+  for (const line of text.replace(/\t/g, '    ').split('\n')) {
+    const m = /^(\s*)(?:[-*•–]|\d+[.)])\s+(.+)$/.exec(line); if (!m) continue;
+    const t = m[2].replace(/\*\*|__|`/g, '').trim(); if (!t) continue;
+    const ind = m[1].length; while (stack.length > 1 && stack[stack.length - 1].ind >= ind) stack.pop();
+    const it = { id: uid(), text: t, children: [] }; stack[stack.length - 1].list.push(it); stack.push({ ind, list: it.children });
+  }
+  return root;
+}
+const LIST_FMT = 'Svara först med en indragen punktlista ("- " och två mellanslag per nivå, korta punkter) som jag kan klistra tillbaka in i min mindmap, och därefter en kort förklaring.';
+const ASKS = [
+  ['Utveckla vidare', 'Utveckla den här idén vidare: föreslå nästa nivå av underpunkter, sådant som saknas och sådant jag inte har tänkt på. ' + LIST_FMT],
+  ['Kan det funka?', 'Granska kritiskt om det här kan fungera i praktiken. Peka ut risker, luckor, beroenden och det som blir svårast, och föreslå hur varje problem kan lösas. Var ärlig och konkret, och säg tydligt om något inte håller.'],
+  ['Sammanställ en plan', 'Sammanställ detta till en tydlig plan: målet, vad som ingår, i vilken ordning sakerna bör göras och de tre första konkreta stegen.'],
+  ['Jag har kört fast', 'Jag har kört fast. Ställ de viktigaste frågorna jag behöver besvara för att komma vidare, och ge förslag på svar där det går. ' + LIST_FMT],
+];
+function openClaude() {
+  const cur = curIdea(), list = cur ? [cur] : G().ideas, trail = [G().name, ...path.map(p => p.text)].join(' › ');
+  let ask = 0;
+  const tabs = el('div', { class: 'gtabs' });
+  const own = el('input', { class: 'in', placeholder: 'Egen fråga eller mer sammanhang (valfritt)', 'aria-label': 'Egen fråga', oninput: () => fill() });
+  const ta = el('textarea', { id: 'cPrompt', class: 'in', rows: 9 });
+  function fill() {
+    ta.value = 'Jag brainstormar i en mindmap och vill ha din hjälp.\n\nVar i mindmappen: ' + trail +
+      '\n\nGrenen jag jobbar med (indragen punktlista):\n' + (outline(list) || '- (tom än så länge)\n') + '\n' + ASKS[ask][1] +
+      (own.value.trim() ? '\n\nMin egen fråga: ' + own.value.trim() : '');
+    [...tabs.children].forEach((b, i) => b.classList.toggle('on', i === ask));
+  }
+  ASKS.forEach(([label], i) => tabs.append(el('button', { class: 'btn', text: label, onclick: () => { ask = i; fill(); } })));
+  const copy = async () => { try { await navigator.clipboard.writeText(ta.value); } catch { ta.select(); document.execCommand('copy'); } };
+  const imp = el('textarea', { id: 'cImport', class: 'in', rows: 5, placeholder: '- Betalning\n  - Kort\n  - Swish' });
+  openModal('Claude · ' + short(cur ? cur.text : G().name, 30), el('div', {},
+    el('div', { class: 'field' }, el('span', { class: 'flabel', text: '1 · Vad vill du ha hjälp med?' }), tabs, own),
+    el('div', { class: 'field' }, el('label', { for: 'cPrompt', text: '2 · Frågan till Claude (går att ändra)' }), ta,
+      el('div', { class: 'row', style: 'margin-top:8px' },
+        el('button', { class: 'btn on', text: 'Kopiera och öppna Claude', onclick: async () => {
+          await copy(); window.open('https://claude.ai/new', '_blank', 'noopener'); toast('CLAUDE', 'Frågan är kopierad – klistra in den med Ctrl+V.'); } }),
+        el('button', { class: 'btn', text: 'Kopiera bara', onclick: async () => { await copy(); toast('CLAUDE', 'Frågan är kopierad.'); } }))),
+    el('div', { class: 'field', style: 'margin:0' }, el('label', { for: 'cImport', text: '3 · Klistra in Claudes punktlista för att lägga in den här' }), imp,
+      el('button', { class: 'btn', style: 'margin-top:8px', text: 'Lägg till i mindmappen', onclick: () => {
+        const items = parseOutline(imp.value);
+        if (!items.length) return toast('CLAUDE', 'Hittade ingen punktlista i texten.');
+        (cur ? kids(cur) : G().ideas).push(...items); save(); buildScene(); buildMind(); closeModal();
+        toast('CLAUDE', items.reduce((s, it) => s + 1 + countDesc(it), 0) + ' idéer tillagda.'); } }))));
+  fill();
+}
+
+const sprites = new Map();
+function starSprite(col) {   // mjukt lysande punkt, cachas per färg
+  let c = sprites.get(col); if (c) return c;
+  c = document.createElement('canvas'); c.width = c.height = 48;
+  const x = c.getContext('2d'), g = x.createRadialGradient(24, 24, 0, 24, 24, 24);
+  g.addColorStop(0, '#fff'); g.addColorStop(0.12, '#fff'); g.addColorStop(0.3, col); g.addColorStop(1, 'rgba(0,0,0,0)');
+  x.fillStyle = g; x.globalAlpha = 0.95; x.fillRect(0, 0, 48, 48);
+  if (sprites.size > 24) sprites.clear();
+  sprites.set(col, c); return c;
+}
+let lastT = performance.now(), frameN = 0;
+function frame(now) {
+  const dt = clamp((now - lastT) / 16.67, 0.2, 3); lastT = now; T += 0.016 * dt; frameN++;
+
+  // --- rotation, tröghet
+  let ax, ay;
+  if (dragging) {
+    ax = pendX; ay = pendY; pendX = pendY = 0;
+    velX += (ax - velX) * 0.5; velY += (ay - velY) * 0.5;
+  } else {
+    ax = velX * dt; ay = velY * dt;
+    const d = Math.pow(0.955, dt); velX *= d; velY *= d;
+    if (state.autoRotate && !hoverApp) ay += 0.0016 * dt;
+  }
+  rotate(ax, ay);
+  if (frameN % 120 === 0) orthonormalize();
+  energy += (Math.hypot(ax, ay) - energy) * 0.09;
+  const amp = 0.018 + Math.min(energy * 4.5, 0.3);   // turbulens ökar när globen snurras
+  const m = M, damp = Math.pow(0.80, dt);
+
+  // --- vy: översikt (ov) ↔ glob ↔ inuti (ins)
+  zoom += (zt - zoom) * (1 - Math.pow(0.88, dt));
+  const ov = sstep(0.62, 0.42, zoom), ins = sstep(1.5, 2.2, zoom);
+  const mn = Math.min(W, H), nG = state.globes.length, lerp = (a, b) => a + (b - a) * ov;
+  const mini = mn * (nG > 6 ? 0.1 : 0.135);
+  // Globarna sitter på ett horisontellt hjul (karusell). I glob-vyn vrids det så att den aktiva
+  // hamnar längst fram; i översikten snurrar man det själv och det snäpper till närmaste glob.
+  if (ov > 0.5) {
+    if (dragging) { wheel += pendW; pendW = 0; wheelT = null; }
+    else { if (wheelT == null) wheelT = Math.round(wheel); wheel += (wheelT - wheel) * (1 - Math.pow(0.86, dt)); }
+  } else {
+    let dW = state.active - wheel; dW -= Math.round(dW / nG) * nG; wheel += dW * (1 - Math.pow(0.9, dt)); pendW = 0; wheelT = null;
+  }
+  const rxW = lerp(Math.min(W * 0.46, mn * 0.85), ovRx()), tiltW = lerp(mn * 0.34, W <= 760 ? mn * 0.6 : mn * 0.2), cyW = H / 2 + 12 + mn * 0.06 * ov;
+  const wheelPos = a => { const d = (1 - Math.cos(a)) / 2, s = 1 / (1 + d * lerp(1.1, 0.8));
+    return { x: W / 2 + Math.sin(a) * rxW * s, y: cyW - d * tiltW, s, d }; };
+  const pA = wheelPos((state.active - wheel) * TAU / nG);   // den aktiva globens plats på hjulet
+  CX = pA.x; CY = pA.y;
+  R = mn * (W <= 760 ? 0.36 : 0.25) * Math.max(zoom, 0.62); R += (mini * pA.s - R) * ov;
+  // mindmap-vyn: globen krymper till idéns "stjärna" i mitten; burst ger en inzoomningsknuff vid nivåbyte
+  im += ((path.length ? 1 : 0) - im) * (1 - Math.pow(0.86, dt)); burst *= Math.pow(0.9, dt);
+  if (im > 0.001) { R += (mn * 0.15 - R) * im; R *= 1 + burst * 1.5; CY += (H / 2 - 6 - CY) * im; }
+  const insP = ins * (1 - im);
+  const ringAl = (1 - ov) * (1 - insP);
+
+  // --- rita
+  ctx.clearRect(0, 0, W, H);
+  const [cr, cg, cb] = ACT || RGB, col = `rgb(${cr},${cg},${cb})`;
+  const g = ctx.createRadialGradient(CX, CY, 0, CX, CY, R * 1.25);
+  g.addColorStop(0, `rgba(${cr},${cg},${cb},${0.16 + Math.min(energy * 2, 0.2)})`);
+  g.addColorStop(0.6, `rgba(${cr},${cg},${cb},0.04)`); g.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = g; ctx.fillRect(CX - R * 1.3, CY - R * 1.3, R * 2.6, R * 2.6);
+
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.fillStyle = col; ctx.strokeStyle = col;
+
+  // bakgrund: hjulet med de övriga globarna, svagt
+  bgHits.length = 0;
+  const bgA = 1 - ins;
+  if (bgA > 0.02 && nG > 1) {
+    ctx.globalAlpha = (0.09 + 0.1 * ov) * bgA; ctx.lineWidth = 1; ctx.beginPath();
+    for (let i = 0; i <= 64; i++) { const p = wheelPos(i / 64 * TAU); i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y); }
+    ctx.stroke();
+    ctx.font = '10px Consolas,monospace'; ctx.textAlign = 'center';
+    state.globes.forEach((g2, j) => {
+      if (j === state.active) return;
+      const p = wheelPos((j - wheel) * TAU / nG), r = lerp(mn * 0.1, mini) * p.s,
+            al = bgA * lerp(0.62 - 0.3 * p.d, 1 - 0.5 * p.d), q = 0.6 + p.s * 0.8;   // svaga i glob-vyn, tydliga i översikten
+      ctx.fillStyle = `rgb(${(ovNodes[j] && ovNodes[j].rgb) || RGB})`;
+      for (let i = 0; i < MB.length; i += 3) {
+        const x = m[0] * MB[i] + m[1] * MB[i + 1] + m[2] * MB[i + 2], y = m[3] * MB[i] + m[4] * MB[i + 1] + m[5] * MB[i + 2],
+              z = m[6] * MB[i] + m[7] * MB[i + 1] + m[8] * MB[i + 2];
+        ctx.globalAlpha = al * (0.3 + 0.7 * (z + 1) / 2);
+        ctx.fillRect(p.x + x * r - q / 2, p.y + y * r - q / 2, q, q);
+      }
+      ctx.globalAlpha = al * 0.9 * (1 - ov); ctx.fillText(g2.name.toUpperCase(), p.x, p.y + r + 15);
+      bgHits.push({ j, x: p.x, y: p.y, r: r * 1.35 });
+    });
+    ctx.fillStyle = col;
+  }
+
+  // HUD-ringar
+  ringA += (0.0025 + energy * 0.35) * dt;
+  const ring = (r, a, segs, gap, lw, al) => {
+    if (ringAl < 0.02) return;
+    ctx.globalAlpha = al * ringAl; ctx.lineWidth = lw;
+    const step = TAU / segs;
+    for (let i = 0; i < segs; i++) { ctx.beginPath(); ctx.arc(CX, CY, r, a + i * step, a + (i + 1) * step - gap); ctx.stroke(); }
+  };
+  ring(R * 1.50, ringA, 3, 0.55, 1.4, 0.55);
+  ring(R * 1.56, -ringA * 0.6, 90, TAU / 90 * 0.72, 5, 0.22);
+  ring(R * 1.64, ringA * 0.35, 5, 0.9, 1, 0.3);
+  ring(R * 1.44, -ringA * 1.4, 2, 2.2, 2.5, 0.35);
+
+  // partiklar: fjädrar mot sin plats på den roterade sfären + flödesbrus
+  const { bx, by, bz, rf, px, py, pz, vx, vy, vz, k, ph, sz, sx, sy } = P;
+  ctx.lineWidth = 0.6; ctx.globalAlpha = 0.2; ctx.beginPath();
+  for (let i = 0; i < N; i++) {
+    const tx = m[0] * bx[i] + m[1] * by[i] + m[2] * bz[i];
+    const ty = m[3] * bx[i] + m[4] * by[i] + m[5] * bz[i];
+    const tz = m[6] * bx[i] + m[7] * by[i] + m[8] * bz[i];
+    const p = ph[i], rr = rf[i] * (1 + 0.025 * Math.sin(T * 0.8 + p));
+    const gx = tx * rr + Math.sin(ty * 3.1 + T * 1.3 + p) * amp;
+    const gy = ty * rr + Math.sin(tz * 2.7 + T * 1.1 + p * 1.7) * amp;
+    const gz = tz * rr + Math.sin(tx * 3.3 + T * 0.9 + p * 0.6) * amp;
+    const kk = k[i] * dt;
+    vx[i] = (vx[i] + (gx - px[i]) * kk) * damp;
+    vy[i] = (vy[i] + (gy - py[i]) * kk) * damp;
+    vz[i] = (vz[i] + (gz - pz[i]) * kk) * damp;
+    px[i] += vx[i] * dt; py[i] += vy[i] * dt; pz[i] += vz[i] * dt;
+    const sc = FOCAL / (FOCAL - clamp(pz[i], -3, 2.6));
+    const X = CX + px[i] * R * sc, Y = CY + py[i] * R * sc;
+    // muspekaren knuffar undan partiklar
+    const mx = X - mouseX, my = Y - mouseY, d2 = mx * mx + my * my;
+    if (d2 < 9000 && d2 > 1) { const d = Math.sqrt(d2), f = (1 - d / 95) * 0.014; vx[i] += mx / d * f; vy[i] += my / d * f; }
+    // rörelsestreck
+    const ox = sx[i], oy = sy[i];
+    if (ox === ox) { const dd = Math.abs(X - ox) + Math.abs(Y - oy); if (dd > 2.2 && dd < 120) { ctx.moveTo(ox, oy); ctx.lineTo(X, Y); } }
+    sx[i] = X; sy[i] = Y;
+  }
+  ctx.stroke();
+  const { br, tw, cg: grp, star } = P;
+  const mixc = (t, o) => `rgb(${Math.round(cr + (o[0] - cr) * t)},${Math.round(cg + (o[1] - cg) * t)},${Math.round(cb + (o[2] - cb) * t)})`;
+  const pcols = [col, mixc(0.6, [255, 255, 255]), mixc(0.5, [255, 210, 150])];
+  const sprite = starSprite(col), shrink = (1 - ov * 0.4) * (1 + insP * 1.2), boost = (1 + insP * 0.7) * (1 - 0.5 * pA.d * ov);
+  for (let gi = 0; gi < 3; gi++) {
+    ctx.fillStyle = pcols[gi];
+    for (let i = 0; i < N; i++) {
+      if (grp[i] !== gi) continue;
+      const z = pz[i], sc = FOCAL / (FOCAL - clamp(z, -3, 2.6)), s = sz[i] * sc * shrink;
+      // djup · glimmer · (inuti globen tonas den främre halvan bort så att man ser "insidan")
+      const a = clamp(0.1 + 0.9 * (z + 1.3) / 2.6, 0.05, 1) * br[i] * (0.72 + 0.28 * Math.sin(T * tw[i] + ph[i] * 3))
+              * boost * (1 - insP * 0.85 * clamp((z + 0.05) / 0.4, 0, 1));
+      if (a < 0.015) continue;
+      ctx.globalAlpha = a;
+      if (star[i]) { const d = (4 + sz[i] * 3.5) * sc * shrink; ctx.drawImage(sprite, sx[i] - d / 2, sy[i] - d / 2, d, d); }
+      else if (s > 1.5) { ctx.beginPath(); ctx.arc(sx[i], sy[i], s / 2, 0, TAU); ctx.fill(); }
+      else ctx.fillRect(sx[i] - s / 2, sy[i] - s / 2, s, s);
+    }
+  }
+  ctx.fillStyle = col;
+
+  // översikt: klickbara ytor och namn följer globarna runt hjulet; den främsta markeras
+  const front = frontGlobe();
+  if (ov > 0.01) for (const [j, o] of ovNodes.entries()) {
+    const p = wheelPos((j - wheel) * TAU / nG), d = mini * p.s * 2.5;
+    o.node.style.width = o.node.style.height = d + 'px';
+    o.node.style.transform = `translate(${(p.x - d / 2).toFixed(1)}px,${(p.y - d / 2).toFixed(1)}px)`;
+    o.node.style.opacity = (1 - 0.55 * p.d).toFixed(2); o.node.style.zIndex = Math.round((1 - p.d) * 100);
+    o.node.classList.toggle('cur', j === front);
+    o.node.classList.toggle('far', W <= 760 && p.d > 0.5);   // på telefon: inga namn på de bakersta, de krockar annars
+  }
+  const layer = (L, a) => { L.style.opacity = a.toFixed(2); L.style.display = a < 0.02 ? 'none' : ''; L.classList.toggle('off', a < 0.6); };
+  layer(ovEl, ov); layer(ideasEl, ins * (1 - im)); layer(appsEl, (1 - ov) * (1 - im)); layer(mindEl, im);
+  // mindmap: underidéerna kretsar runt stjärnan, med små prickar för sina egna underidéer
+  if (im > 0.02 && path.length) {
+    orbit += 0.0007 * dt + ay;
+    const nM = mindNodes.length, rxM = Math.min(W * 0.34, mn * 0.62), ryM = Math.min(H * 0.3, mn * 0.36), grow = 1 - Math.max(burst, 0);
+    ctx.lineWidth = 1;
+    mindNodes.forEach((o, i) => {
+      if (!o.w) { o.w = o.node.offsetWidth; o.h = o.node.offsetHeight; }
+      const a = orbit + i * TAU / nM - Math.PI / 2, f = (nM > 9 && i % 2 ? 0.62 : 1) * grow;
+      const x = CX + Math.cos(a) * rxM * f, y = CY + Math.sin(a) * ryM * f;
+      o.node.style.transform = `translate(${x.toFixed(1)}px,${y.toFixed(1)}px) translate(-50%,-50%)`;
+      ctx.globalAlpha = 0.28 * im; ctx.beginPath(); ctx.moveTo(CX, CY); ctx.lineTo(x, y); ctx.stroke();
+      const c = Math.min(o.it.children ? o.it.children.length : 0, 14);
+      ctx.globalAlpha = 0.8 * im;
+      for (let k = 0; k < c; k++) { const b = T * 0.5 + k * TAU / c + i;
+        ctx.fillRect(x + Math.cos(b) * (o.w / 2 + 12) - 1.2, y + Math.sin(b) * (o.h / 2 + 11) - 1.2, 2.4, 2.4); }
+    });
+    if (mindTitle) mindTitle.style.transform = `translate(${CX.toFixed(1)}px,${CY.toFixed(1)}px) translate(-50%,-50%)`;
+  }
+  // inuti globen: apparna i rader, idéerna i ett fält under dem
+  const nA = appNodes.length, cell = W <= 760 ? 88 : 112, rowH = 100, cols = Math.max(1, Math.min(nA, Math.floor(Math.min(W - 80, 900) / cell)));
+  const rows = Math.ceil(nA / cols), gridTop = Math.max(84, H * 0.4 - rows * rowH / 2);
+  if (ins >= 0.02) {
+    const top = Math.round(gridTop + rows * rowH + 16), t = top + 'px';
+    if (ideasEl.style.top !== t) { ideasEl.style.top = t; ideasEl.style.maxHeight = Math.max(60, H - top - 112) + 'px'; }
+  }
+  const lv = ov > 0.5 ? 0 : ins > 0.5 ? 2 : 1;
+  if (lv !== level) { level = lv; ideaBar.classList.toggle('on', lv === 2);
+    [...$('#levels').children].forEach((b, i) => { b.classList.toggle('on', i === lv); b.setAttribute('aria-pressed', i === lv); }); }
+
+  // appar
+  let best = null, bestZ = 0.55;
+  ctx.lineWidth = 1;
+  for (const n of appNodes) {
+    const x = m[0] * n.bx + m[1] * n.by + m[2] * n.bz, y = m[3] * n.bx + m[4] * n.by + m[5] * n.bz,
+          z = m[6] * n.bx + m[7] * n.by + m[8] * n.bz;
+    const sc = FOCAL / (FOCAL - z * APP_R), X0 = CX + x * APP_R * R * sc, Y0 = CY + y * APP_R * R * sc;
+    // glider från sin plats på globen till sin plats i rutnätet när man zoomar in
+    const row = Math.floor(n.i / cols), inRow = row === rows - 1 ? nA - row * cols : cols;
+    const X = X0 + (W / 2 + (n.i % cols - (inRow - 1) / 2) * cell - X0) * ins, Y = Y0 + (gridTop + row * rowH + 30 - Y0) * ins;
+    const front = z > -0.12 || ins > 0.6, depth = (z + 1) / 2 * (1 - ins) + ins;
+    n.node.style.transform = `translate(${X.toFixed(1)}px,${Y.toFixed(1)}px) translate(-50%,-28px) scale(${(0.5 + depth * 0.62).toFixed(3)})`;
+    n.node.style.opacity = front ? (0.45 + depth * 0.55).toFixed(2) : (0.08 + depth * 0.35).toFixed(2);
+    n.node.style.zIndex = Math.round(z * 100) + 200;
+    n.node.style.pointerEvents = front ? 'auto' : 'none';
+    n.node.tabIndex = front ? 0 : -1;
+    const s0 = FOCAL / (FOCAL - z);
+    ctx.globalAlpha = (front ? 0.5 : 0.12) * (1 - ins);
+    ctx.beginPath(); ctx.moveTo(CX + x * R * s0, CY + y * R * s0); ctx.lineTo(X, Y); ctx.stroke();
+    if (z > bestZ && ins < 0.5) { bestZ = z; best = n; }
+    n.node.classList.remove('focus');
+  }
+  if (best) best.node.classList.add('focus');
+  const gg = G(), txt = lv === 0 ? ['Översikt', 'dra för att snurra · klicka på en glob']
+    : lv === 2 && path.length ? [short(curIdea().text, 36), kids(curIdea()).length + ' underidéer · scrolla ut för att backa']
+    : lv === 2 ? [gg.name, 'inuti · ' + gg.ideas.length + ' idéer · klicka på en idé för att zooma in']
+    : [gg.name, best ? 'i fokus: ' + best.a.name : 'dra för att rotera · scrolla för att zooma'];
+  if (readout.dataset.t !== txt.join('\n')) {
+    readout.dataset.t = txt.join('\n'); readout.textContent = '';
+    readout.append(el('b', { text: txt[0] }), ' · ' + txt[1]);
+  }
+  ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+  requestAnimationFrame(frame);
+}
+
+/* =====================================================================
+   Toasts, ljud, modal
+   ===================================================================== */
+let actx;
+function beep() {
+  try {
+    actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+    [880, 1320, 880].forEach((f, i) => {
+      const o = actx.createOscillator(), g = actx.createGain(), t = actx.currentTime + i * 0.16;
+      o.frequency.value = f; o.type = 'sine';
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.12, t + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.14);
+      o.connect(g).connect(actx.destination); o.start(t); o.stop(t + 0.16);
+    });
+  } catch {}
+}
+function toast(label, text, sticky) {
+  const t = el('div', { class: 'toast' }, el('b', { text: label }), el('span', { text }),
+    el('button', { class: 'ib', text: '✕', 'aria-label': 'Stäng', onclick: () => t.remove() }));
+  $('#toasts').append(t);
+  if (!sticky) setTimeout(() => t.remove(), 6000);
+}
+const modal = $('#modal');
+function openModal(title, body) {
+  $('#mTitle').textContent = title; const b = $('#mBody'); b.textContent = ''; b.append(body);
+  modal.classList.add('open'); $('#mClose').focus();
+}
+const closeModal = () => modal.classList.remove('open');
+$('#mClose').onclick = closeModal;
+modal.addEventListener('pointerdown', e => { if (e.target === modal) closeModal(); });
+addEventListener('keydown', e => { if (e.key !== 'Escape') return;
+  if (modal.classList.contains('open')) closeModal(); else if (path.length) setPath(path.slice(0, -1), -0.4); });
+
+/* =====================================================================
+   Widgets
+   ===================================================================== */
+const WX = { 0:['☀️','Klart'],1:['🌤️','Mest klart'],2:['⛅','Halvklart'],3:['☁️','Mulet'],45:['🌫️','Dimma'],48:['🌫️','Rimfrost'],
+  51:['🌦️','Lätt duggregn'],53:['🌦️','Duggregn'],55:['🌧️','Tätt duggregn'],56:['🌧️','Underkylt duggregn'],57:['🌧️','Underkylt duggregn'],
+  61:['🌦️','Lätt regn'],63:['🌧️','Regn'],65:['🌧️','Kraftigt regn'],66:['🌧️','Underkylt regn'],67:['🌧️','Underkylt regn'],
+  71:['🌨️','Lätt snöfall'],73:['🌨️','Snöfall'],75:['❄️','Kraftigt snöfall'],77:['🌨️','Kornsnö'],
+  80:['🌦️','Regnskurar'],81:['🌧️','Regnskurar'],82:['⛈️','Skyfall'],85:['🌨️','Snöbyar'],86:['❄️','Kraftiga snöbyar'],
+  95:['⛈️','Åska'],96:['⛈️','Åska med hagel'],99:['⛈️','Åska med hagel'] };
+const wx = c => WX[c] || ['❔', 'Okänt'];
+const isoWeek = d => { const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  const day = t.getUTCDay() || 7; t.setUTCDate(t.getUTCDate() + 4 - day);
+  return Math.ceil(((t - Date.UTC(t.getUTCFullYear(), 0, 1)) / 864e5 + 1) / 7); };
+const fmtWhen = iso => { const d = new Date(iso), n = new Date(), hm = d.toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' });
+  return d.toDateString() === n.toDateString() ? 'Idag ' + hm : d.toLocaleDateString('sv-SE', { day: 'numeric', month: 'short' }) + ' ' + hm; };
+const t0 = Date.now();
+
+const TYPES = {
+  clock: { title: 'Klocka', icon: '🕒', desc: 'Tid, datum och vecka',
+    render(w, body) {
+      const t = el('div', { class: 'clock-t' }), d = el('div', { class: 'clock-d' }); body.append(t, d);
+      const tick = () => { const n = new Date(), p = x => String(x).padStart(2, '0');
+        t.textContent = ''; t.append(p(n.getHours()) + ':' + p(n.getMinutes()), el('small', { text: p(n.getSeconds()) }));
+        d.textContent = n.toLocaleDateString('sv-SE', { weekday: 'long', day: 'numeric', month: 'long' }) + ' · v.' + isoWeek(n); };
+      tick(); return tick;
+    } },
+
+  weather: { title: 'Väder', icon: '⛅', desc: 'Aktuellt väder och prognos',
+    render(w, body) {
+      const d = w.data; if (d.lat == null) Object.assign(d, { name: 'Stockholm', lat: 59.33, lon: 18.07 });
+      const out = el('div', { class: 'muted', text: 'Hämtar väderdata…' });
+      const inp = el('input', { class: 'in', placeholder: 'Byt ort…', 'aria-label': 'Ort' });
+      const form = el('form', { class: 'row', style: 'margin-top:11px', onsubmit: async e => {
+        e.preventDefault(); const q = inp.value.trim(); if (!q) return;
+        try {
+          const r = await (await fetch('https://geocoding-api.open-meteo.com/v1/search?count=1&language=sv&name=' + encodeURIComponent(q))).json();
+          if (!r.results || !r.results.length) return toast('VÄDER', 'Hittade ingen ort som heter "' + q + '"');
+          const g = r.results[0]; Object.assign(d, { name: g.name, lat: g.latitude, lon: g.longitude }); save(); inp.value = ''; load();
+        } catch { toast('VÄDER', 'Kunde inte söka ort — ingen anslutning?'); }
+      } }, inp, el('button', { class: 'btn', text: 'Sök' }));
+      body.append(out, form);
+      async function load() {
+        try {
+          const r = await (await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${d.lat}&longitude=${d.lon}` +
+            '&current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m&daily=weather_code,temperature_2m_max,temperature_2m_min' +
+            '&wind_speed_unit=ms&timezone=auto&forecast_days=4')).json();
+          const c = r.current, [ico, txt] = wx(c.weather_code);
+          out.className = ''; out.textContent = '';
+          out.append(
+            el('div', { class: 'wx-main' }, el('div', { class: 'wx-ico', text: ico }),
+              el('div', {}, el('div', { class: 'wx-temp', text: Math.round(c.temperature_2m) + '°' }),
+                el('div', { class: 'muted', text: d.name + ' · ' + txt }))),
+            el('div', { class: 'muted mono', style: 'margin-top:8px', text:
+              `Känns som ${Math.round(c.apparent_temperature)}° · Vind ${Math.round(c.wind_speed_10m)} m/s` }),
+            el('div', { class: 'wx-days' }, [1, 2, 3].map(i => el('div', { class: 'wx-day' },
+              new Date(r.daily.time[i]).toLocaleDateString('sv-SE', { weekday: 'short' }).toUpperCase(),
+              el('span', { class: 'e', text: wx(r.daily.weather_code[i])[0] }),
+              Math.round(r.daily.temperature_2m_max[i]) + '° / ' + Math.round(r.daily.temperature_2m_min[i]) + '°'))));
+        } catch { out.className = 'muted'; out.textContent = 'Kunde inte hämta väder för ' + d.name + '. Försöker igen om en stund.'; }
+      }
+      load(); let n = 0; return () => { if (++n % 900 === 0) load(); };   // var 15:e minut
+    } },
+
+  links: { title: 'Länkar', icon: '🔗', desc: 'Egna genvägar och bokmärken',
+    render(w, body) {
+      const d = w.data; d.links = d.links || [];
+      const ul = el('ul', { class: 'list' });
+      const draw = () => { ul.textContent = '';
+        if (!d.links.length) ul.append(el('li', { class: 'muted', text: 'Inga länkar ännu.' }));
+        d.links.forEach((l, i) => ul.append(el('li', {},
+          el('a', { class: 'lnk grow', href: '#', text: l.name, title: l.url, onclick: e => { e.preventDefault(); openUrl(l.url); } }),
+          el('button', { class: 'ib', text: '✕', 'aria-label': 'Ta bort ' + l.name, onclick: () => { d.links.splice(i, 1); save(); draw(); } })))); };
+      const n = el('input', { class: 'in', placeholder: 'Namn', 'aria-label': 'Namn' }),
+            u = el('input', { class: 'in', placeholder: 'Adress', 'aria-label': 'Adress' });
+      body.append(ul, el('form', { class: 'row', onsubmit: e => { e.preventDefault(); if (!u.value.trim()) return;
+        d.links.push({ name: n.value.trim() || u.value.trim(), url: u.value.trim() }); n.value = u.value = ''; save(); draw(); n.focus(); } },
+        n, u, el('button', { class: 'btn', text: '+', 'aria-label': 'Lägg till länk' })));
+      draw();
+    } },
+
+  reminders: { title: 'Påminnelser', icon: '⏰', desc: 'Att göra, med larm vid vald tid',
+    render(w, body) {
+      const ul = el('ul', { class: 'list' }), now = Date.now();
+      const items = [...state.reminders].sort((a, b) => (a.done - b.done) || ((a.time ? Date.parse(a.time) : 9e15) - (b.time ? Date.parse(b.time) : 9e15)));
+      if (!items.length) ul.append(el('li', { class: 'muted', text: 'Inga påminnelser. Lägg till en nedan.' }));
+      for (const r of items) ul.append(el('li', { class: 'rem' + (r.done ? ' done' : '') + (!r.done && r.time && Date.parse(r.time) <= now ? ' due' : '') },
+        el('input', { type: 'checkbox', class: 'chk', checked: r.done, 'aria-label': 'Klar: ' + r.text,
+          onchange: e => { r.done = e.target.checked; save(); refresh('reminders'); } }),
+        el('span', { class: 'grow' }, r.text, r.time ? el('span', { class: 'rt', text: fmtWhen(r.time) }) : null),
+        el('button', { class: 'ib', text: '✕', 'aria-label': 'Ta bort', onclick: () => {
+          state.reminders = state.reminders.filter(x => x !== r); save(); refresh('reminders'); } })));
+      const t = el('input', { class: 'in', placeholder: 'Påminn mig om…', 'aria-label': 'Påminnelse' }),
+            dt = el('input', { class: 'in', type: 'datetime-local', 'aria-label': 'Tidpunkt (valfritt)' });
+      body.append(ul, el('form', { onsubmit: e => { e.preventDefault(); if (!t.value.trim()) return;
+          state.reminders.push({ id: uid(), text: t.value.trim(), time: dt.value || '', done: false, notified: false });
+          if (dt.value && 'Notification' in window && Notification.permission === 'default') Notification.requestPermission().catch(() => {});
+          save(); refresh('reminders'); } },
+        t, el('div', { class: 'row', style: 'margin-top:7px' }, dt, el('button', { class: 'btn', text: 'Lägg till' }))));
+    } },
+
+  notes: { title: 'Anteckningar', icon: '📝', desc: 'Snabba anteckningar som sparas',
+    render(w, body) {
+      body.append(el('textarea', { class: 'in notes', placeholder: 'Skriv här…', 'aria-label': 'Anteckningar', value: w.data.text || '',
+        oninput: e => { w.data.text = e.target.value; save(); } }));
+    } },
+
+  search: { title: 'Sök', icon: '🔍', desc: 'Sök på webben direkt',
+    render(w, body) {
+      const q = el('input', { class: 'in', placeholder: 'Sök på webben…', 'aria-label': 'Sökfråga' });
+      body.append(el('form', { class: 'row', onsubmit: e => { e.preventDefault(); if (!q.value.trim()) return;
+        window.open('https://www.google.com/search?q=' + encodeURIComponent(q.value.trim()), '_blank', 'noopener'); q.value = ''; } },
+        q, el('button', { class: 'btn', text: 'Sök' })));
+    } },
+
+  system: { title: 'System', icon: '📡', desc: 'Batteri, nätverk och drifttid',
+    render(w, body) {
+      const mk = label => { const v = el('span'); body.append(el('div', { class: 'kv' }, el('span', { text: label }), v)); return v; };
+      const bv = mk('Batteri'), bb = el('i'); body.append(el('div', { class: 'bar' }, bb));
+      const nv = mk('Nätverk'), sv = mk('Skärm'), cv2 = mk('Kärnor'), uv = mk('Session');
+      let bat = null; if (navigator.getBattery) navigator.getBattery().then(b => { bat = b; tick(); }).catch(() => {});
+      const tick = () => {
+        if (bat) { const p = Math.round(bat.level * 100); bv.textContent = p + '%' + (bat.charging ? ' ⚡' : ''); bb.style.width = p + '%'; }
+        else { bv.textContent = 'Nätdrift'; bb.style.width = '100%'; }
+        const c = navigator.connection;
+        nv.textContent = navigator.onLine ? 'Online' + (c && c.downlink ? ' · ' + c.downlink + ' Mbit' : '') : 'Offline';
+        sv.textContent = screen.width + '×' + screen.height;
+        cv2.textContent = (navigator.hardwareConcurrency || '–') + ' st';
+        const s = Math.floor((Date.now() - t0) / 1000), p = x => String(x).padStart(2, '0');
+        uv.textContent = p(Math.floor(s / 3600)) + ':' + p(Math.floor(s / 60) % 60) + ':' + p(s % 60);
+      };
+      tick(); return tick;
+    } },
+
+  timer: { title: 'Timer', icon: '⏱️', desc: 'Nedräkning med larm',
+    render(w, body) {
+      const d = w.data; d.min = d.min || 25;
+      const disp = el('div', { class: 'tm' }), p = x => String(x).padStart(2, '0');
+      const mins = el('input', { class: 'in', type: 'number', min: 1, max: 600, value: d.min, style: 'width:70px', 'aria-label': 'Minuter',
+        onchange: e => { d.min = clamp(+e.target.value || 1, 1, 600); save(); tick(); } });
+      const go = el('button', { class: 'btn', onclick: () => {
+        if (d.end) { d.left = Math.max(0, d.end - Date.now()); d.end = null; }
+        else { d.end = Date.now() + (d.left || d.min * 60000); d.left = null; }
+        save(); tick(); } });
+      body.append(disp, el('div', { class: 'row' }, mins, el('span', { class: 'muted', text: 'min' }), go,
+        el('button', { class: 'btn', text: 'Nollställ', onclick: () => { d.end = d.left = null; save(); tick(); } })));
+      const tick = () => {
+        let ms = d.end ? d.end - Date.now() : (d.left || d.min * 60000);
+        if (d.end && ms <= 0) { d.end = d.left = null; save(); ms = d.min * 60000; beep(); toast('TIMER', 'Tiden är ute.', true); }
+        const s = Math.ceil(ms / 1000); disp.textContent = p(Math.floor(s / 60)) + ':' + p(s % 60);
+        go.textContent = d.end ? 'Pausa' : 'Starta';
+      };
+      tick(); return tick;
+    } },
+};
+
+const wLayer = $('#widgets'), mounted = new Map(); let topZ = 10;
+function mountWidget(w) {
+  const def = TYPES[w.type]; if (!def) return;
+  const body = el('div', { class: 'w-body' });
+  const head = el('div', { class: 'w-head' }, el('span', { class: 'w-title', text: def.title }),
+    el('button', { class: 'ib', text: '✕', 'aria-label': 'Ta bort widget ' + def.title, onclick: () => {
+      state.widgets = state.widgets.filter(x => x !== w); mounted.delete(w.id); node.remove(); save(); } }));
+  const node = el('section', { class: 'widget', 'aria-label': def.title }, head, body);
+  node.style.left = w.x + 'px'; node.style.top = w.y + 'px';
+  node.addEventListener('pointerdown', () => node.style.zIndex = ++topZ);
+  head.addEventListener('pointerdown', e => {
+    if (e.target.closest('button')) return;
+    const ox = e.clientX - w.x, oy = e.clientY - w.y; head.setPointerCapture(e.pointerId);
+    const mv = ev => { w.x = clamp(ev.clientX - ox, 0, innerWidth - 60); w.y = clamp(ev.clientY - oy, 0, innerHeight - 34);
+      node.style.left = w.x + 'px'; node.style.top = w.y + 'px'; };
+    const up = () => { head.removeEventListener('pointermove', mv); head.removeEventListener('pointerup', up); save(); };
+    head.addEventListener('pointermove', mv); head.addEventListener('pointerup', up);
+  });
+  wLayer.append(node);
+  mounted.set(w.id, { w, node, body, tick: def.render(w, body) });
+}
+function refresh(type) {
+  for (const m of mounted.values()) if (m.w.type === type) { m.body.textContent = ''; m.tick = TYPES[type].render(m.w, m.body); }
+}
+function clampWidgets() {
+  if (isMobile()) return;
+  for (const { w, node } of mounted.values()) {
+    w.x = clamp(w.x, 0, Math.max(0, innerWidth - node.offsetWidth)); w.y = clamp(w.y, 0, Math.max(0, innerHeight - 40));
+    node.style.left = w.x + 'px'; node.style.top = w.y + 'px';
+  }
+}
+function addWidget(type) {
+  const n = state.widgets.length;
+  const w = { id: uid(), type, x: clamp(innerWidth / 2 - 135 + (n % 5) * 22 - 44, 10, innerWidth - 280), y: 90 + (n % 5) * 22, data: {} };
+  state.widgets.push(w); save(); mountWidget(w); mounted.get(w.id).node.style.zIndex = ++topZ;
+  if (isMobile()) { document.body.classList.add('wopen'); mounted.get(w.id).node.scrollIntoView({ block: 'nearest' }); }
+}
+
+// sekundpuls: uppdatera widgets + kolla påminnelser
+setInterval(() => {
+  for (const m of mounted.values()) if (m.tick) m.tick();
+  const now = Date.now(); let hit = false;
+  for (const r of state.reminders) if (r.time && !r.done && !r.notified && Date.parse(r.time) <= now) {
+    r.notified = true; hit = true; toast('PÅMINNELSE', r.text, true);
+    try { if ('Notification' in window && Notification.permission === 'granted') new Notification('V.I.C.T.O.R. — påminnelse', { body: r.text }); } catch {}
+  }
+  if (hit) { beep(); save(); refresh('reminders'); }
+  greet();
+}, 1000);
+
+/* =====================================================================
+   Paneler: widgets, appar, inställningar
+   ===================================================================== */
+function greet() {
+  const h = new Date().getHours();
+  const g = h < 5 ? 'God natt' : h < 10 ? 'God morgon' : h < 17 ? 'God dag' : h < 23 ? 'God kväll' : 'God natt';
+  const open = state.reminders.filter(r => !r.done).length;
+  const s = `${g}${state.name ? ', ' + state.name : ''}. Alla system online` + (open ? ` · ${open} aktiv${open > 1 ? 'a' : ''} påminnelse${open > 1 ? 'r' : ''}` : '');
+  const e = $('#greet'); if (e.textContent !== s) e.textContent = s;
+}
+$('#bWidget').onclick = () => openModal('Lägg till widget', el('div', { class: 'wgrid' },
+  Object.entries(TYPES).map(([k, t]) => el('button', { class: 'wpick', onclick: () => { addWidget(k); closeModal(); } },
+    el('span', { class: 'e', text: t.icon }), el('b', { text: t.title }), el('span', { class: 'muted', text: t.desc })))));
+
+function openApps(gi) {
+  if (typeof gi !== 'number') gi = state.active;
+  const wrap = el('div'), changed = () => { save(); buildScene(); };
+  const draw = () => {
+    const g = state.globes[gi]; wrap.textContent = '';
+    wrap.append(el('div', { class: 'gtabs' },
+      state.globes.map((x, i) => el('button', { class: 'btn' + (i === gi ? ' on' : ''), text: x.name, onclick: () => { gi = i; draw(); } })),
+      el('button', { class: 'btn', text: '+ Ny glob', onclick: () => { state.globes.push(newGlobe()); gi = state.globes.length - 1; changed(); draw(); } })));
+    wrap.append(el('div', { class: 'field' }, el('label', { for: 'gName', text: 'Globens namn och färg' }),
+      el('div', { class: 'row' },
+        el('input', { id: 'gName', class: 'in', value: g.name, onchange: e => { g.name = e.target.value.trim() || 'Glob'; changed(); draw(); } }),
+        el('input', { type: 'color', value: g.color || state.theme, 'aria-label': 'Globens färg', onchange: e => { g.color = e.target.value; changed(); } }),
+        el('button', { class: 'btn', text: 'Följ tema', onclick: () => { g.color = ''; changed(); draw(); } }),
+        state.globes.length > 1 ? el('button', { class: 'btn danger', text: 'Ta bort glob', onclick: () => {
+          if (!confirm('Ta bort globen "' + g.name + '" med alla dess appar och idéer?')) return;
+          state.globes.splice(gi, 1); state.active = clamp(state.active > gi ? state.active - 1 : state.active, 0, state.globes.length - 1);
+          gi = Math.min(gi, state.globes.length - 1); changed(); draw(); } }) : null)));
+    wrap.append(el('span', { class: 'flabel', text: 'Appar i globen' }), el('p', { class: 'muted', style: 'margin-top:0', text:
+      'Webbadresser öppnas i ny flik. Installerade program startas med sitt protokoll, t.ex. spotify:  vscode:  ms-settings:  calculator:  steam://  discord://' }));
+    g.apps.forEach((a, i) => {
+      const f = (key, ph) => el('input', { class: 'in', value: a[key] || '', placeholder: ph, 'aria-label': ph,
+        onchange: e => { a[key] = e.target.value.trim(); changed(); } });
+      wrap.append(el('div', { class: 'arow' }, f('icon', 'Ikon'), f('name', 'Namn'), f('url', 'Adress eller protokoll'),
+        el('button', { class: 'btn danger', text: '✕', 'aria-label': 'Ta bort ' + a.name, onclick: () => { g.apps.splice(i, 1); changed(); draw(); } })));
+    });
+    wrap.append(el('button', { class: 'btn', style: 'margin-top:6px', text: '+ Lägg till app', onclick: () => {
+      g.apps.push(mkApp('✨', 'Ny app', 'https://')); changed(); draw();
+      const rows = wrap.querySelectorAll('.arow'); rows[rows.length - 1].children[1].select(); } }));
+  };
+  draw(); openModal('Glober och appar', wrap);
+}
+$('#bApps').onclick = () => openApps();
+$('#bDrawer').onclick = () => document.body.classList.toggle('wopen');
+$('#levels').addEventListener('click', e => { const z = e.target.dataset.z; if (!z) return;
+  if (path.length) setPath([], -0.4);
+  if (level === 0 && +z > 0.5) enterGlobe(frontGlobe());   // från översikten: gå in i den främsta globen
+  zt = +z; });
+ideaBar.addEventListener('submit', e => { e.preventDefault(); const i = $('#ideaIn'), t = i.value.trim(); if (!t) return;
+  const cur = curIdea(); (cur ? kids(cur) : G().ideas).push({ id: uid(), text: t, children: [] });
+  i.value = ''; save(); buildScene(); buildMind(); });
+$('#bClaude').onclick = openClaude;
+
+const PRESETS = ['#00d8ff', '#3d8bff', '#00ffa2', '#ffb300', '#ff7a1a', '#ff3b4a', '#ff4fd8', '#a66bff', '#e8f4ff'];
+$('#bSettings').onclick = () => {
+  const sw = el('div', { class: 'swatches' });
+  const picker = el('input', { type: 'color', value: state.theme, 'aria-label': 'Egen färg', oninput: e => { setTheme(e.target.value); mark(); } });
+  const mark = () => { sw.querySelectorAll('.sw').forEach(b => b.classList.toggle('on', b.dataset.c === state.theme)); picker.value = state.theme; };
+  PRESETS.forEach(c => sw.append(el('button', { class: 'sw', style: `background:${c};color:${c}`, 'data-c': c, 'aria-label': 'Färg ' + c,
+    onclick: () => { setTheme(c); mark(); } })));
+  sw.append(picker); mark();
+  const pl = el('span', { text: state.particles });
+  openModal('Inställningar', el('div', {},
+    el('p', { class: 'tagline', text: 'V.I.C.T.O.R. · Visionary Interface for Creative Thinking, Organisation & Research' }),
+    el('div', { class: 'field' }, el('label', { text: 'Temafärg' }), sw),
+    el('div', { class: 'field' }, el('label', { for: 'sName', text: 'Ditt namn' }),
+      el('input', { id: 'sName', class: 'in', value: state.name, oninput: e => { state.name = e.target.value.trim(); save(); greet(); } })),
+    el('div', { class: 'field' }, el('label', { for: 'sPart' }, 'Antal partiklar · ', pl),
+      el('input', { id: 'sPart', type: 'range', min: 1000, max: 10000, step: 250, value: state.particles,
+        oninput: e => { pl.textContent = e.target.value; }, onchange: e => { state.particles = +e.target.value; save(); initParticles(); } })),
+    el('div', { class: 'field' }, el('label', { class: 'row', style: 'cursor:pointer' },
+      el('input', { type: 'checkbox', class: 'chk', checked: state.autoRotate, onchange: e => { state.autoRotate = e.target.checked; save(); } }),
+      'Rotera globen automatiskt')),
+    el('div', { class: 'field' }, el('span', { class: 'flabel', text: 'Flytta till en annan enhet' }),
+      el('div', { class: 'row' },
+        el('button', { class: 'btn', text: 'Exportera', onclick: () => {
+          const a = el('a', { href: URL.createObjectURL(new Blob([JSON.stringify(state)], { type: 'application/json' })), download: 'victor-backup.json' });
+          a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000); } }),
+        el('label', { class: 'btn', style: 'cursor:pointer' }, 'Importera',
+          el('input', { type: 'file', accept: 'application/json,.json', style: 'display:none', onchange: async e => {
+            try {
+              const s = JSON.parse(await e.target.files[0].text());
+              if (!s || !Array.isArray(s.globes)) throw new Error('fel format');
+              if (!confirm('Ersätta allt på den här enheten med innehållet i filen?')) return;
+              clearTimeout(saveT); localStorage.setItem(KEY, JSON.stringify(s)); location.reload();
+            } catch { toast('IMPORT', 'Filen gick inte att läsa.'); } } }))),
+      el('p', { class: 'muted', style: 'margin:8px 0 0', text: 'Allt sparas på varje enhet för sig. Exportera här och importera filen på den andra enheten för att ta med appar, widgets och idéer.' })),
+    el('div', { class: 'field', style: 'margin:0' }, el('span', { class: 'flabel', text: 'Återställ' }),
+      el('button', { class: 'btn danger', text: 'Nollställ allt', onclick: () => {
+        if (confirm('Ta bort alla appar, widgets, påminnelser och inställningar och börja om?')) { clearTimeout(saveT); localStorage.removeItem(KEY); location.reload(); } } }))));
+};
+$('#bFull').onclick = () => document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen().catch(() => {});
+
+/* =====================================================================
+   Start
+   ===================================================================== */
+resize(); initParticles(); buildScene();
+state.widgets.forEach(mountWidget); clampWidgets(); greet();
+requestAnimationFrame(frame);
+
+// installerbar app: fungerar bara när sidan ligger på en webbadress (https), inte som lokal fil
+if ('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js').catch(() => {});
+
+// första starten: hälsa välkommen och fråga vad användaren heter
+if (firstRun) {
+  const name = el('input', { id: 'wName', class: 'in', placeholder: 'Ditt namn', autocomplete: 'given-name' });
+  openModal('Välkommen till V.I.C.T.O.R.', el('form', { onsubmit: e => { e.preventDefault(); state.name = name.value.trim(); save(); greet(); closeModal(); } },
+    el('p', { class: 'tagline', text: 'Visionary Interface for Creative Thinking, Organisation & Research' }),
+    el('p', { style: 'margin-top:0', text: 'Ditt eget universum för appar, idéer och påminnelser. Dra i globen för att snurra den, scrolla för att zooma ut till alla globar eller in i en av dem.' }),
+    el('div', { class: 'field' }, el('label', { for: 'wName', text: 'Vad ska jag kalla dig?' }), name),
+    el('button', { class: 'btn on', text: 'Starta' })));
+  name.focus();
+}
+</script>
+</body>
+</html>
