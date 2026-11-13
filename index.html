@@ -59,6 +59,7 @@ body.dragging #globe,body.dragging .app{cursor:grabbing}
   box-shadow:0 0 14px rgba(var(--rgb),.25),inset 0 0 12px rgba(var(--rgb),.18);
   transition:box-shadow .2s,border-color .2s,transform .2s;
 }
+.app .ico img{width:40px;height:40px;border-radius:10px;pointer-events:none}
 .app .lbl{
   font:11px var(--mono);letter-spacing:.12em;text-transform:uppercase;white-space:nowrap;
   color:var(--text);text-shadow:0 0 8px rgba(var(--rgb),.9),0 0 2px #000;
@@ -288,6 +289,7 @@ input[type=range]{width:100%;accent-color:var(--accent)}
   <div id="greet"></div>
   <button class="hbtn" id="bDrawer" aria-controls="widgets">Widgets</button>
   <button class="hbtn" id="bWidget">+ Widget</button>
+  <button class="hbtn" id="bSearch">Sök</button>
   <button class="hbtn" id="bApps">Glober</button>
   <button class="hbtn" id="bSettings">Inställningar</button>
   <button class="hbtn" id="bFull" title="Helskärm">⛶</button>
@@ -328,6 +330,8 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
    State (sparas i localStorage)
    ===================================================================== */
 const KEY = 'jarvis-desktop-v1';
+// Finns bara när sidan körs inne i Android-launchern: brygga till telefonens appar (se android/MainActivity.java)
+const NATIVE = window.VictorNative || null;
 const mkApp = (icon, name, url) => ({ id: uid(), icon, name, url });
 const newGlobe = (name, color, apps, ideas) => ({ id: uid(), name: name || 'Ny glob', color: color || '', apps: apps || [], ideas: (ideas || []).map(t => typeof t === 'string' ? { id: uid(), text: t, children: [] } : t) });
 const I = (text, ...children) => ({ id: uid(), text, children });   // en idé med underidéer
@@ -336,7 +340,7 @@ function defaults() {
   return {
     name: '',
     theme: '#00d8ff',
-    particles: 4500,
+    particles: NATIVE || innerWidth <= 760 ? 2400 : 4500,   // färre på telefon, för batteriets skull
     autoRotate: true,
     active: 0,
     globes: [
@@ -396,6 +400,8 @@ try {
   delete state.apps;
   if (!Array.isArray(state.globes) || !state.globes.length) state.globes = defaults().globes;
 } catch { state = defaults(); }
+// i launchern byggs globarna av telefonens egna appar; bara Brainstorm-globen följer med från standarduppsättningen
+if (NATIVE && firstRun) { state.globes = state.globes.filter(g => g.name === 'Brainstorm'); state.active = 0; }
 const G = () => state.globes[state.active] || state.globes[state.active = 0];
 const hexRgb = h => { const m = /^#?([0-9a-f]{6})$/i.exec(h || ''); if (!m) return null;
   const n = parseInt(m[1], 16); return [n >> 16, (n >> 8) & 255, n & 255]; };
@@ -589,6 +595,10 @@ function openUrl(url) {
   else if (/^[a-z][a-z0-9+.-]*:/i.test(url)) location.href = url;       // protokoll: spotify:, ms-settings: …
   else window.open('https://' + url, '_blank', 'noopener');
 }
+function openApp(a) {   // en app från telefonen startas via launchern, allt annat är en länk
+  if (a.pkg && NATIVE) { if (!NATIVE.launch(a.pkg)) toast('APP', a.name + ' gick inte att starta.'); }
+  else openUrl(a.url);
+}
 function buildScene() {
   state.globes.forEach(g => { g.apps = g.apps || []; g.ideas = g.ideas || []; });
   const g = G(); ACT = hexRgb(g.color);
@@ -618,12 +628,13 @@ function buildScene() {
   const n = g.apps.length;
   g.apps.forEach((a, i) => {
     const [bx0, y, bz0] = fib(i, n);
-    const node = el('button', { class: 'app', title: a.name + ' — ' + a.url,
+    const node = el('button', { class: 'app', title: a.url ? a.name + ' — ' + a.url : a.name,
       onpointerdown: onDown,
-      onclick: () => { if (moved < 7) openUrl(a.url); },
+      onclick: () => { if (moved < 7) openApp(a); },
       oncontextmenu: e => { e.preventDefault(); openApps(); },
       onpointerenter: () => hoverApp = true, onpointerleave: () => hoverApp = false },
-      el('span', { class: 'ico', text: a.icon || (a.name || '?')[0].toUpperCase() }),
+      a.pkg && NATIVE ? el('span', { class: 'ico' }, el('img', { src: '/icon/' + a.pkg, alt: '', draggable: false }))
+                      : el('span', { class: 'ico', text: a.icon || (a.name || '?')[0].toUpperCase() }),
       el('span', { class: 'lbl', text: a.name }));
     appsEl.append(node);
     appNodes.push({ a, node, i, bx: bx0, by: y, bz: bz0 });
@@ -756,9 +767,10 @@ function frame(now) {
   } else {
     let dW = state.active - wheel; dW -= Math.round(dW / nG) * nG; wheel += dW * (1 - Math.pow(0.9, dt)); pendW = 0; wheelT = null;
   }
-  const rxW = lerp(Math.min(W * 0.46, mn * 0.85), ovRx()), tiltW = lerp(mn * 0.34, W <= 760 ? mn * 0.6 : mn * 0.2), cyW = H / 2 + 12 + mn * 0.06 * ov;
+  const rxW = lerp(Math.min(W * 0.46, mn * 0.85), ovRx()), tiltW = W <= 760 ? lerp(mn * 0.12, mn * 0.6) : lerp(mn * 0.34, mn * 0.2),
+        liftW = W <= 760 ? lerp(mn * 0.62, 0) : 0,   // telefon: de andra globarna bildar en båge ovanför den aktiva cyW = H / 2 + 12 + mn * 0.06 * ov;
   const wheelPos = a => { const d = (1 - Math.cos(a)) / 2, s = 1 / (1 + d * lerp(1.1, 0.8));
-    return { x: W / 2 + Math.sin(a) * rxW * s, y: cyW - d * tiltW, s, d }; };
+    return { x: W / 2 + Math.sin(a) * rxW * s, y: cyW - d * tiltW - liftW * Math.min(1, d * 6), s, d }; };
   const pA = wheelPos((state.active - wheel) * TAU / nG);   // den aktiva globens plats på hjulet
   CX = pA.x; CY = pA.y;
   R = mn * (W <= 760 ? 0.36 : 0.25) * Math.max(zoom, 0.62); R += (mini * pA.s - R) * ov;
@@ -1226,6 +1238,69 @@ function openApps(gi) {
 }
 $('#bApps').onclick = () => openApps();
 $('#bDrawer').onclick = () => document.body.classList.toggle('wopen');
+
+/* ---------- Sök bland alla appar i alla globar ---------- */
+function openSearch() {
+  const all = []; state.globes.forEach(g => g.apps.forEach(a => all.push({ a, g })));
+  all.sort((x, y) => x.a.name.localeCompare(y.a.name, 'sv'));
+  const list = el('ul', { class: 'list', style: 'max-height:52vh;margin-top:10px' });
+  const q = el('input', { class: 'in', placeholder: 'Sök bland alla appar…', 'aria-label': 'Sök app', oninput: () => draw(),
+    onkeydown: e => { if (e.key === 'Enter') { const first = list.querySelector('a'); if (first) first.click(); } } });
+  function draw() {
+    const t = q.value.trim().toLowerCase(), hits = all.filter(x => x.a.name.toLowerCase().includes(t));
+    list.textContent = '';
+    if (!hits.length) list.append(el('li', { class: 'muted', text: 'Inga appar matchar.' }));
+    hits.slice(0, 100).forEach(x => list.append(el('li', {},
+      el('a', { class: 'lnk grow', href: '#', text: x.a.name, onclick: e => { e.preventDefault(); closeModal(); openApp(x.a); } }),
+      el('span', { class: 'muted', text: x.g.name }))));
+  }
+  draw(); openModal('Sök app', el('div', {}, q, list)); q.focus();
+}
+$('#bSearch').onclick = openSearch;
+
+/* ---------- Android-launchern: telefonens appar sorteras in i globar ---------- */
+// Androids appkategorier → globar. Appar utan kategori hamnar i bokstavsglober.
+const CATS = { 0: 'Spel', 1: 'Media', 2: 'Media', 3: 'Media', 4: 'Socialt', 5: 'Socialt', 6: 'Resor & kartor', 7: 'Produktivitet' };
+const CAT_COLORS = { 'Spel': '#ff7a1a', 'Media': '#ff4fd8', 'Socialt': '#3d8bff', 'Resor & kartor': '#00ffa2', 'Produktivitet': '#a66bff', 'Nya appar': '#e8f4ff' };
+const PER_GLOBE = 14;
+function syncNativeApps(first) {   // returnerar true om något ändrades
+  let list; try { list = JSON.parse(NATIVE.getApps()); } catch { return false; }
+  if (!Array.isArray(list) || !list.length) return false;
+  list.sort((a, b) => a.label.localeCompare(b.label, 'sv'));
+  const installed = new Set(list.map(a => a.pkg)), have = new Set(); let changed = false;
+  for (const g of state.globes) {   // ta bort avinstallerade, notera vilka som redan ligger i en glob
+    const keep = (g.apps || []).filter(a => !a.pkg || installed.has(a.pkg));
+    if (keep.length !== (g.apps || []).length) changed = true;
+    g.apps = keep; keep.forEach(a => a.pkg && have.add(a.pkg));
+  }
+  const globeFor = name => state.globes.find(g => g.name === name) || state.globes[state.globes.push(newGlobe(name, CAT_COLORS[name])) - 1];
+  const rest = [];
+  for (const a of list) {
+    if (have.has(a.pkg)) continue;
+    const app = { id: uid(), icon: '', name: a.label, url: '', pkg: a.pkg }; changed = true;
+    if (CATS[a.cat]) globeFor(CATS[a.cat]).apps.push(app); else rest.push(app);
+  }
+  if (first) for (let i = 0; i < rest.length; i += PER_GLOBE) {
+    const chunk = rest.slice(i, i + PER_GLOBE), a = chunk[0].name[0].toUpperCase(), b = chunk[chunk.length - 1].name[0].toUpperCase();
+    state.globes.push(newGlobe('Appar ' + (a === b ? a : a + '–' + b), '', chunk));
+  } else rest.forEach(app => globeFor('Nya appar').apps.push(app));   // appar som installerats senare
+  if (changed) save();
+  return changed;
+}
+if (NATIVE) {
+  // bakåtknappen backar en nivå i stället för att stänga startskärmen
+  window.nativeBack = () => {
+    if (modal.classList.contains('open')) closeModal();
+    else if (document.body.classList.contains('wopen')) document.body.classList.remove('wopen');
+    else if (path.length) setPath(path.slice(0, -1), -0.4);
+    else if (level === 2) zt = 1;
+    else if (level === 1) zt = 0.3;
+  };
+  // hemknappen går alltid till glob-vyn
+  window.nativeHome = () => { closeModal(); document.body.classList.remove('wopen'); if (path.length) setPath([], -0.4); if (level === 0) enterGlobe(frontGlobe()); zt = 1; };
+  // när man kommer tillbaka från en annan app: plocka upp nyinstallerade och ta bort avinstallerade
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && syncNativeApps(false)) buildScene(); });
+}
 $('#levels').addEventListener('click', e => { const z = e.target.dataset.z; if (!z) return;
   if (path.length) setPath([], -0.4);
   if (level === 0 && +z > 0.5) enterGlobe(frontGlobe());   // från översikten: gå in i den främsta globen
@@ -1255,7 +1330,9 @@ $('#bSettings').onclick = () => {
     el('div', { class: 'field' }, el('label', { class: 'row', style: 'cursor:pointer' },
       el('input', { type: 'checkbox', class: 'chk', checked: state.autoRotate, onchange: e => { state.autoRotate = e.target.checked; save(); } }),
       'Rotera globen automatiskt')),
-    el('div', { class: 'field' }, el('span', { class: 'flabel', text: 'Flytta till en annan enhet' }),
+    NATIVE ? el('div', { class: 'field' }, el('span', { class: 'flabel', text: 'Startskärm' }),
+      el('button', { class: 'btn', text: 'Välj V.I.C.T.O.R. som startskärm', onclick: () => NATIVE.homeSettings() }))
+    : el('div', { class: 'field' }, el('span', { class: 'flabel', text: 'Flytta till en annan enhet' }),
       el('div', { class: 'row' },
         el('button', { class: 'btn', text: 'Exportera', onclick: () => {
           const a = el('a', { href: URL.createObjectURL(new Blob([JSON.stringify(state)], { type: 'application/json' })), download: 'victor-backup.json' });
@@ -1278,12 +1355,13 @@ $('#bFull').onclick = () => document.fullscreenElement ? document.exitFullscreen
 /* =====================================================================
    Start
    ===================================================================== */
+if (NATIVE) syncNativeApps(firstRun);
 resize(); initParticles(); buildScene();
 state.widgets.forEach(mountWidget); clampWidgets(); greet();
 requestAnimationFrame(frame);
 
 // installerbar app: fungerar bara när sidan ligger på en webbadress (https), inte som lokal fil
-if ('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js').catch(() => {});
+if (!NATIVE && 'serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js').catch(() => {});
 
 // första starten: hälsa välkommen och fråga vad användaren heter
 if (firstRun) {
