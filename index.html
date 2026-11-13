@@ -768,7 +768,8 @@ function frame(now) {
     let dW = state.active - wheel; dW -= Math.round(dW / nG) * nG; wheel += dW * (1 - Math.pow(0.9, dt)); pendW = 0; wheelT = null;
   }
   const rxW = lerp(Math.min(W * 0.46, mn * 0.85), ovRx()), tiltW = W <= 760 ? lerp(mn * 0.12, mn * 0.6) : lerp(mn * 0.34, mn * 0.2),
-        liftW = W <= 760 ? lerp(mn * 0.62, 0) : 0,   // telefon: de andra globarna bildar en båge ovanför den aktiva cyW = H / 2 + 12 + mn * 0.06 * ov;
+        liftW = W <= 760 ? lerp(mn * 0.62, 0) : 0,   // telefon: de andra globarna bildar en båge ovanför den aktiva
+        cyW = H / 2 + 12 + mn * 0.06 * ov;
   const wheelPos = a => { const d = (1 - Math.cos(a)) / 2, s = 1 / (1 + d * lerp(1.1, 0.8));
     return { x: W / 2 + Math.sin(a) * rxW * s, y: cyW - d * tiltW - liftW * Math.min(1, d * 6), s, d }; };
   const pA = wheelPos((state.active - wheel) * TAU / nG);   // den aktiva globens plats på hjulet
@@ -795,13 +796,13 @@ function frame(now) {
   bgHits.length = 0;
   const bgA = 1 - ins;
   if (bgA > 0.02 && nG > 1) {
-    ctx.globalAlpha = (0.09 + 0.1 * ov) * bgA; ctx.lineWidth = 1; ctx.beginPath();
+    ctx.globalAlpha = (0.09 + 0.1 * ov) * bgA * (W <= 760 ? ov : 1); ctx.lineWidth = 1; ctx.beginPath();   // telefon: ingen hjullinje i glob-vyn
     for (let i = 0; i <= 64; i++) { const p = wheelPos(i / 64 * TAU); i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y); }
     ctx.stroke();
     ctx.font = '10px Consolas,monospace'; ctx.textAlign = 'center';
     state.globes.forEach((g2, j) => {
       if (j === state.active) return;
-      const p = wheelPos((j - wheel) * TAU / nG), r = lerp(mn * 0.1, mini) * p.s,
+      const p = wheelPos((j - wheel) * TAU / nG), r = lerp(mn * (W <= 760 ? 0.075 : 0.1), mini) * p.s,
             al = bgA * lerp(0.62 - 0.3 * p.d, 1 - 0.5 * p.d), q = 0.6 + p.s * 0.8;   // svaga i glob-vyn, tydliga i översikten
       ctx.fillStyle = `rgb(${(ovNodes[j] && ovNodes[j].rgb) || RGB})`;
       for (let i = 0; i < MB.length; i += 3) {
