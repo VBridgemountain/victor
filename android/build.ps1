@@ -55,5 +55,6 @@ Run "$bt\apksigner.bat" sign --ks $ks --ks-pass pass:android --key-pass pass:and
     --out "$out\victor.apk" "$out\aligned.apk"
 Run "$bt\apksigner.bat" verify "$out\victor.apk"
 
+Copy-Item "$out\victor.apk" "$web\victor.apk" -Force   # kopian i repots rot är den som går att ladda ner från webben
 $apk = Get-Item "$out\victor.apk"
 "Klar: $($apk.FullName) ($([math]::Round($apk.Length / 1KB)) kB)"
