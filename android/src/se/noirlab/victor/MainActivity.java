@@ -9,6 +9,7 @@ import android.graphics.Canvas;
 import android.graphics.drawable.Drawable;
 import android.net.Uri;
 import android.os.Bundle;
+import android.provider.MediaStore;
 import android.provider.Settings;
 import android.view.View;
 import android.webkit.JavascriptInterface;
@@ -187,6 +188,24 @@ public class MainActivity extends Activity {
         public boolean launch(String pkg) {
             final Intent i = getPackageManager().getLaunchIntentForPackage(pkg);
             if (i == null) return false;
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            runOnUiThread(new Runnable() {
+                @Override public void run() {
+                    try { startActivity(i); } catch (Exception ignored) { }
+                }
+            });
+            return true;
+        }
+
+        /** Snabbknapparna under globen: öppnar telefonens egna appar för samtal, kamera, webb och sms. */
+        @JavascriptInterface
+        public boolean action(String kind) {
+            final Intent i;
+            if ("phone".equals(kind)) i = new Intent(Intent.ACTION_DIAL);
+            else if ("camera".equals(kind)) i = new Intent(MediaStore.INTENT_ACTION_STILL_IMAGE_CAMERA);
+            else if ("web".equals(kind)) i = Intent.makeMainSelectorActivity(Intent.ACTION_MAIN, Intent.CATEGORY_APP_BROWSER);
+            else if ("sms".equals(kind)) i = Intent.makeMainSelectorActivity(Intent.ACTION_MAIN, Intent.CATEGORY_APP_MESSAGING);
+            else return false;
             i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             runOnUiThread(new Runnable() {
                 @Override public void run() {

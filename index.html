@@ -246,6 +246,28 @@ input[type=range]{width:100%;accent-color:var(--accent)}
   box-shadow:0 0 30px rgba(var(--rgb),.45);font:12px var(--mono);letter-spacing:.1em;max-width:min(520px,90vw);animation:wIn .3s}
 .toast b{color:var(--accent);letter-spacing:.2em}
 /* ---------- telefon / smala fönster ---------- */
+/* ---------- snabbknappar under globen ---------- */
+#dock{position:fixed;left:50%;bottom:58px;transform:translateX(-50%);z-index:6;display:flex;gap:24px;transition:opacity .25s}
+#dock:empty{display:none}
+body.lv2 #dock{opacity:0;pointer-events:none}
+body.hasdock #ovAdd{bottom:138px}
+.dk{background:none;border:0;padding:0;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:4px}
+.dk .ico{width:50px;height:50px;border-radius:50%;display:grid;place-items:center;font-size:22px;line-height:1;
+  background:radial-gradient(circle at 50% 35%,rgba(var(--rgb),.28),rgba(2,6,11,.88) 70%);border:1px solid var(--line);
+  box-shadow:0 0 14px rgba(var(--rgb),.25);transition:box-shadow .2s,border-color .2s}
+.dk .lbl{font:9px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
+.dk:hover .ico,.dk:focus-visible .ico,.dk:active .ico{border-color:var(--accent);box-shadow:0 0 22px rgba(var(--rgb),.7)}
+.dk:focus-visible{outline:none}
+/* ---------- appväljare ---------- */
+.app.add .ico{border-style:dashed;font-size:28px;color:var(--accent)}
+.plist{max-height:54vh;margin-top:10px}
+.plist li{cursor:pointer;padding:7px 4px;gap:11px}
+.plist li img{width:34px;height:34px;border-radius:8px;flex:none}
+.plist li.sel{background:rgba(var(--rgb),.14)}
+.plist li.sel .muted{color:var(--accent)}
+.plist li:focus-visible{outline:1px solid var(--accent)}
+.aimg{width:38px;height:38px;border-radius:9px;justify-self:center;align-self:center}
+.arow .muted{align-self:center;font-size:11px}
 #bDrawer{display:none}
 @media (hover:none){.list li .ib,.mnode .ib{opacity:1}}
 @media (max-width:760px){
@@ -265,6 +287,9 @@ input[type=range]{width:100%;accent-color:var(--accent)}
   #levels{right:50%;transform:translateX(50%);bottom:calc(12px + env(safe-area-inset-bottom))}
   #ideaBar{bottom:calc(92px + env(safe-area-inset-bottom))}
   #ovAdd{bottom:calc(104px + env(safe-area-inset-bottom))}
+  #dock{bottom:calc(90px + env(safe-area-inset-bottom))}
+  body.hasdock #ovAdd{bottom:calc(172px + env(safe-area-inset-bottom))}
+  .arow .muted{display:none}
   #crumbs{top:calc(88px + env(safe-area-inset-top))}
   .mnode{max-width:124px;font-size:12px;padding:7px 10px}
   .mtitle{max-width:170px;font-size:15px;padding:16px 20px}
@@ -296,6 +321,7 @@ input[type=range]{width:100%;accent-color:var(--accent)}
 </header>
 
 <div id="widgets"></div>
+<div id="dock" role="group" aria-label="Snabbknappar"></div>
 <div id="readout"></div>
 <div id="toasts"></div>
 <div id="modal"><div class="modal" role="dialog" aria-modal="true">
@@ -402,6 +428,8 @@ try {
 } catch { state = defaults(); }
 // i launchern byggs globarna av telefonens egna appar; bara Brainstorm-globen följer med från standarduppsättningen
 if (NATIVE && firstRun) { state.globes = state.globes.filter(g => g.name === 'Brainstorm'); state.active = 0; }
+// snabbknapparna under globen: på i launchern, av på webben tills man väljer dem
+if (!Array.isArray(state.dock)) state.dock = NATIVE ? ['phone', 'camera', 'web'] : [];
 const G = () => state.globes[state.active] || state.globes[state.active = 0];
 const hexRgb = h => { const m = /^#?([0-9a-f]{6})$/i.exec(h || ''); if (!m) return null;
   const n = parseInt(m[1], 16); return [n >> 16, (n >> 8) & 255, n & 255]; };
@@ -562,7 +590,7 @@ addEventListener('wheel', e => {
 }, { passive: false });
 function kick(s) { for (let i = 0; i < N; i++) { P.vx[i] += (Math.random() - .5) * s; P.vy[i] += (Math.random() - .5) * s; P.vz[i] += (Math.random() - .5) * s; } }
 let wheel = state.active, pendW = 0, wheelT = null, wheel0 = 0; const bgHits = [];
-const ovRx = () => Math.min(W * 0.36, Math.min(W, H) * 0.7);   // hjulets radie i översikten
+const ovRx = () => W <= 760 ? W * 0.43 : Math.min(W * 0.36, Math.min(W, H) * 0.7);   // hjulets radie i översikten
 const frontGlobe = () => { const n = state.globes.length; return ((Math.round(wheel) % n) + n) % n; };
 cv.addEventListener('click', e => {   // klick på en bakgrundsglob byter till den
   if (moved >= 7 || level !== 1) return;
@@ -648,6 +676,11 @@ function buildScene() {
     appsEl.append(node);
     appNodes.push({ a, node, i, bx: bx0, by: y, bz: bz0 });
   });
+  // sista rutan i rutnätet inuti globen: lägg till appar (syns bara i inuti-vyn)
+  const add = el('button', { class: 'app add', title: 'Lägg till appar i globen', onpointerdown: onDown,
+    onclick: () => { if (moved < 7) { if (NATIVE) openPicker(state.active); else openApps(); } } },
+    el('span', { class: 'ico', text: '+' }), el('span', { class: 'lbl', text: 'Lägg till' }));
+  appsEl.append(add); appNodes.push({ a: null, add: true, node: add, i: n, bx: 0, by: 0, bz: -1 });
   hoverApp = false;
 }
 
@@ -767,7 +800,7 @@ function frame(now) {
   zoom += (zt - zoom) * (1 - Math.pow(0.88, dt));
   const ov = sstep(0.62, 0.42, zoom), ins = sstep(1.5, 2.2, zoom);
   const mn = Math.min(W, H), nG = state.globes.length, lerp = (a, b) => a + (b - a) * ov;
-  const mini = mn * (nG > 6 ? 0.1 : 0.135);
+  const mini = mn * (W <= 760 ? 0.095 : nG > 6 ? 0.1 : 0.135);
   // Globarna sitter på ett horisontellt hjul (karusell). I glob-vyn vrids det så att den aktiva
   // hamnar längst fram; i översikten snurrar man det själv och det snäpper till närmaste glob.
   if (ov > 0.5) {
@@ -776,9 +809,9 @@ function frame(now) {
   } else {
     let dW = state.active - wheel; dW -= Math.round(dW / nG) * nG; wheel += dW * (1 - Math.pow(0.9, dt)); pendW = 0; wheelT = null;
   }
-  const rxW = lerp(Math.min(W * 0.46, mn * 0.85), ovRx()), tiltW = W <= 760 ? lerp(mn * 0.12, mn * 0.6) : lerp(mn * 0.34, mn * 0.2),
+  const rxW = lerp(Math.min(W * 0.46, mn * 0.85), ovRx()), tiltW = W <= 760 ? lerp(mn * 0.12, mn * 0.26) : lerp(mn * 0.34, mn * 0.2),   // telefon: flack, liggande ring i översikten
         liftW = W <= 760 ? lerp(mn * 0.62, 0) : 0,   // telefon: de andra globarna bildar en båge ovanför den aktiva
-        cyW = H / 2 + 12 + mn * 0.06 * ov;
+        cyW = H / 2 + 12 + mn * (W <= 760 ? -0.12 : 0.06) * ov;   // telefon: ringen lite högre upp, ovanför snabbknapparna
   const wheelPos = a => { const d = (1 - Math.cos(a)) / 2, s = 1 / (1 + d * lerp(1.1, 0.8));
     return { x: W / 2 + Math.sin(a) * rxW * s, y: cyW - d * tiltW - liftW * Math.min(1, d * 6), s, d }; };
   const pA = wheelPos((state.active - wheel) * TAU / nG);   // den aktiva globens plats på hjulet
@@ -934,7 +967,7 @@ function frame(now) {
     if (ideasEl.style.clipPath !== clip) ideasEl.style.clipPath = clip;
   } else { gridScroll = gridVel = gridMax = 0; }
   const lv = ov > 0.5 ? 0 : ins > 0.5 ? 2 : 1;
-  if (lv !== level) { level = lv; ideaBar.classList.toggle('on', lv === 2);
+  if (lv !== level) { level = lv; ideaBar.classList.toggle('on', lv === 2); document.body.classList.toggle('lv2', lv === 2);
     [...$('#levels').children].forEach((b, i) => { b.classList.toggle('on', i === lv); b.setAttribute('aria-pressed', i === lv); }); }
 
   // appar
@@ -949,12 +982,13 @@ function frame(now) {
     const X = X0 + (W / 2 + (n.i % cols - (inRow - 1) / 2) * cell - X0) * ins, Y = Y0 + (gridTop + row * rowH + 30 - gridScroll - Y0) * ins;
     // appar som scrollats ut ur rutnätets synliga del tonas bort
     const fade = ins > 0.5 ? clamp((Y - topMin + 26) / 34, 0, 1) * clamp((viewBot - 30 - Y) / 34, 0, 1) : 1;
-    const front = (z > -0.12 || ins > 0.6) && fade > 0.3, depth = (z + 1) / 2 * (1 - ins) + ins;
+    const front = (z > -0.12 || ins > 0.6) && fade > 0.3 && (!n.add || ins > 0.6), depth = (z + 1) / 2 * (1 - ins) + ins;
     n.node.style.transform = `translate(${X.toFixed(1)}px,${Y.toFixed(1)}px) translate(-50%,-28px) scale(${(0.5 + depth * 0.62).toFixed(3)})`;
-    n.node.style.opacity = ((z > -0.12 || ins > 0.6 ? 0.45 + depth * 0.55 : 0.08 + depth * 0.35) * fade).toFixed(2);
+    n.node.style.opacity = ((z > -0.12 || ins > 0.6 ? 0.45 + depth * 0.55 : 0.08 + depth * 0.35) * fade * (n.add ? ins : 1)).toFixed(2);
     n.node.style.zIndex = Math.round(z * 100) + 200;
     n.node.style.pointerEvents = front ? 'auto' : 'none';
     n.node.tabIndex = front ? 0 : -1;
+    if (n.add) continue;   // "lägg till"-rutan sitter inte på globen
     const s0 = FOCAL / (FOCAL - z);
     ctx.globalAlpha = (front ? 0.5 : 0.12) * (1 - ins);
     ctx.beginPath(); ctx.moveTo(CX + x * R * s0, CY + y * R * s0); ctx.lineTo(X, Y); ctx.stroke();
@@ -1222,9 +1256,66 @@ function greet() {
   const s = `${g}${state.name ? ', ' + state.name : ''}. Alla system online` + (open ? ` · ${open} aktiv${open > 1 ? 'a' : ''} påminnelse${open > 1 ? 'r' : ''}` : '');
   const e = $('#greet'); if (e.textContent !== s) e.textContent = s;
 }
-$('#bWidget').onclick = () => openModal('Lägg till widget', el('div', { class: 'wgrid' },
-  Object.entries(TYPES).map(([k, t]) => el('button', { class: 'wpick', onclick: () => { addWidget(k); closeModal(); } },
-    el('span', { class: 'e', text: t.icon }), el('b', { text: t.title }), el('span', { class: 'muted', text: t.desc })))));
+/* ---------- Snabbknappar under globen: ringa, kamera, internet, sms ---------- */
+const DOCK = { phone: ['📞', 'Ringa'], camera: ['📷', 'Kamera'], web: ['🌐', 'Internet'], sms: ['💬', 'SMS'] };
+function dockAction(k) {
+  if (NATIVE && NATIVE.action) { if (!NATIVE.action(k)) toast('SNABBKNAPP', DOCK[k][1] + ' gick inte att öppna.'); }
+  else if (k === 'phone') location.href = 'tel:';
+  else if (k === 'sms') location.href = 'sms:';
+  else if (k === 'web') window.open('https://www.google.com', '_blank', 'noopener');
+  else toast('KAMERA', 'Kameran går bara att öppna i Android-appen.');
+}
+function buildDock() {
+  const d = $('#dock'); d.textContent = '';
+  for (const k of state.dock) if (DOCK[k]) d.append(el('button', { class: 'dk', title: DOCK[k][1], onclick: () => dockAction(k) },
+    el('span', { class: 'ico', text: DOCK[k][0] }), el('span', { class: 'lbl', text: DOCK[k][1] })));
+  document.body.classList.toggle('hasdock', d.children.length > 0);
+}
+$('#bWidget').onclick = () => openModal('Lägg till widget', el('div', {},
+  el('div', { class: 'wgrid' },
+    Object.entries(TYPES).map(([k, t]) => el('button', { class: 'wpick', onclick: () => { addWidget(k); closeModal(); } },
+      el('span', { class: 'e', text: t.icon }), el('b', { text: t.title }), el('span', { class: 'muted', text: t.desc })))),
+  el('div', { class: 'field', style: 'margin:18px 0 0' }, el('span', { class: 'flabel', text: 'Snabbknappar under globen' }),
+    el('div', { class: 'gtabs', style: 'margin:0' }, Object.entries(DOCK).map(([k, [ico, name]]) =>
+      el('button', { class: 'btn' + (state.dock.includes(k) ? ' on' : ''), text: ico + ' ' + name, 'aria-pressed': state.dock.includes(k), onclick: e => {
+        const on = !state.dock.includes(k);
+        state.dock = Object.keys(DOCK).filter(x => x === k ? on : state.dock.includes(x));   // behåll fast ordning
+        e.currentTarget.classList.toggle('on', on); e.currentTarget.setAttribute('aria-pressed', on); save(); buildDock(); } }))))));
+
+/* ---------- Appväljare: välj bland telefonens appar vilka som ska ligga i en glob ---------- */
+const hidePkg = p => { state.hidden = state.hidden || []; if (!state.hidden.includes(p)) state.hidden.push(p); };
+const unhidePkg = p => { state.hidden = (state.hidden || []).filter(x => x !== p); };
+const globeOf = pkg => state.globes.find(g => g.apps.some(a => a.pkg === pkg));
+function nativeApps() { try { return JSON.parse(NATIVE.getApps()).sort((a, b) => a.label.localeCompare(b.label, 'sv')); } catch { return []; } }
+function openPicker(gi) {
+  const g = state.globes[gi], all = nativeApps();
+  const list = el('ul', { class: 'list plist' });
+  const q = el('input', { class: 'in', placeholder: 'Sök bland telefonens appar…', 'aria-label': 'Sök app', oninput: () => draw() });
+  const toggle = a => {
+    const cur = globeOf(a.pkg);
+    if (cur) cur.apps = cur.apps.filter(x => x.pkg !== a.pkg);
+    if (cur === g) hidePkg(a.pkg);                                   // togs bort härifrån: ska inte sorteras in automatiskt igen
+    else { g.apps.push({ id: uid(), icon: '', name: a.label, url: '', pkg: a.pkg }); unhidePkg(a.pkg); }
+    save(); buildScene(); draw();
+  };
+  function draw() {
+    const t = q.value.trim().toLowerCase(), hits = all.filter(a => a.label.toLowerCase().includes(t)), keep = list.scrollTop;
+    list.textContent = '';
+    if (!hits.length) list.append(el('li', { class: 'muted', text: 'Inga appar matchar.' }));
+    for (const a of hits) {
+      const cur = globeOf(a.pkg), here = cur === g;
+      list.append(el('li', { class: here ? 'sel' : '', role: 'button', tabIndex: 0, 'aria-pressed': here,
+        onclick: () => toggle(a), onkeydown: e => { if (e.key === 'Enter') toggle(a); } },
+        el('img', { src: '/icon/' + a.pkg, alt: '', loading: 'lazy' }), el('span', { class: 'grow', text: a.label }),
+        el('span', { class: 'muted', text: here ? '✓ i globen' : cur ? cur.name : 'inte tillagd' })));
+    }
+    list.scrollTop = keep;
+  }
+  draw();
+  openModal('Appar i ' + g.name, el('div', {},
+    el('p', { class: 'muted', style: 'margin-top:0', text: 'Tryck på en app för att lägga den i globen. Tryck igen för att ta bort den. En app som ligger i en annan glob flyttas hit.' }),
+    q, list, el('button', { class: 'btn on', style: 'margin-top:4px', text: 'Klar', onclick: closeModal })));
+}
 
 function openApps(gi) {
   if (typeof gi !== 'number') gi = state.active;
@@ -1243,15 +1334,21 @@ function openApps(gi) {
           if (!confirm('Ta bort globen "' + g.name + '" med alla dess appar och idéer?')) return;
           state.globes.splice(gi, 1); state.active = clamp(state.active > gi ? state.active - 1 : state.active, 0, state.globes.length - 1);
           gi = Math.min(gi, state.globes.length - 1); changed(); draw(); } }) : null)));
-    wrap.append(el('span', { class: 'flabel', text: 'Appar i globen' }), el('p', { class: 'muted', style: 'margin-top:0', text:
+    wrap.append(el('span', { class: 'flabel', text: 'Appar i globen' }));
+    if (NATIVE) wrap.append(el('button', { class: 'btn on', style: 'margin-bottom:12px', text: '+ Lägg till appar från telefonen',
+      onclick: () => openPicker(gi) }));
+    else wrap.append(el('p', { class: 'muted', style: 'margin-top:0', text:
       'Webbadresser öppnas i ny flik. Installerade program startas med sitt protokoll, t.ex. spotify:  vscode:  ms-settings:  calculator:  steam://  discord://' }));
     g.apps.forEach((a, i) => {
       const f = (key, ph) => el('input', { class: 'in', value: a[key] || '', placeholder: ph, 'aria-label': ph,
         onchange: e => { a[key] = e.target.value.trim(); changed(); } });
-      wrap.append(el('div', { class: 'arow' }, f('icon', 'Ikon'), f('name', 'Namn'), f('url', 'Adress eller protokoll'),
-        el('button', { class: 'btn danger', text: '✕', 'aria-label': 'Ta bort ' + a.name, onclick: () => { g.apps.splice(i, 1); changed(); draw(); } })));
+      const del = el('button', { class: 'btn danger', text: '✕', 'aria-label': 'Ta bort ' + a.name, onclick: () => {
+        if (a.pkg) hidePkg(a.pkg); g.apps.splice(i, 1); changed(); draw(); } });
+      wrap.append(a.pkg && NATIVE   // telefonapp: ikon och namn räcker
+        ? el('div', { class: 'arow' }, el('img', { class: 'aimg', src: '/icon/' + a.pkg, alt: '' }), f('name', 'Namn'), el('span', { class: 'muted', text: 'Telefonapp' }), del)
+        : el('div', { class: 'arow' }, f('icon', 'Ikon'), f('name', 'Namn'), f('url', 'Adress eller protokoll'), del));
     });
-    wrap.append(el('button', { class: 'btn', style: 'margin-top:6px', text: '+ Lägg till app', onclick: () => {
+    wrap.append(el('button', { class: 'btn', style: 'margin-top:6px', text: NATIVE ? '+ Lägg till webblänk' : '+ Lägg till app', onclick: () => {
       g.apps.push(mkApp('✨', 'Ny app', 'https://')); changed(); draw();
       const rows = wrap.querySelectorAll('.arow'); rows[rows.length - 1].children[1].select(); } }));
   };
@@ -1262,7 +1359,10 @@ $('#bDrawer').onclick = () => document.body.classList.toggle('wopen');
 
 /* ---------- Sök bland alla appar i alla globar ---------- */
 function openSearch() {
-  const all = []; state.globes.forEach(g => g.apps.forEach(a => all.push({ a, g })));
+  const all = [];
+  state.globes.forEach(g => g.apps.forEach(a => { if (!NATIVE || !a.pkg) all.push({ a, g }); }));
+  // i launchern söker man bland alla telefonens appar, även de som inte ligger i någon glob
+  if (NATIVE) nativeApps().forEach(a => all.push({ a: { name: a.label, pkg: a.pkg }, g: globeOf(a.pkg) || { name: '' } }));
   all.sort((x, y) => x.a.name.localeCompare(y.a.name, 'sv'));
   const list = el('ul', { class: 'list', style: 'max-height:52vh;margin-top:10px' });
   const q = el('input', { class: 'in', placeholder: 'Sök bland alla appar…', 'aria-label': 'Sök app', oninput: () => draw(),
@@ -1297,7 +1397,7 @@ function syncNativeApps(first) {   // returnerar true om något ändrades
   const globeFor = name => state.globes.find(g => g.name === name) || state.globes[state.globes.push(newGlobe(name, CAT_COLORS[name])) - 1];
   const rest = [];
   for (const a of list) {
-    if (have.has(a.pkg)) continue;
+    if (have.has(a.pkg) || (state.hidden || []).includes(a.pkg)) continue;   // redan placerad, eller borttagen av användaren
     const app = { id: uid(), icon: '', name: a.label, url: '', pkg: a.pkg }; changed = true;
     if (CATS[a.cat]) globeFor(CATS[a.cat]).apps.push(app); else rest.push(app);
   }
@@ -1377,7 +1477,7 @@ $('#bFull').onclick = () => document.fullscreenElement ? document.exitFullscreen
    Start
    ===================================================================== */
 if (NATIVE) syncNativeApps(firstRun);
-resize(); initParticles(); buildScene();
+resize(); initParticles(); buildScene(); buildDock();
 state.widgets.forEach(mountWidget); clampWidgets(); greet();
 requestAnimationFrame(frame);
 
