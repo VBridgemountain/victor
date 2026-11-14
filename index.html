@@ -507,7 +507,7 @@ function onDown(e) {
   if (e.button !== 0) return;
   touches.set(e.pointerId, { x: e.clientX, y: e.clientY }); pinchD = 0;
   document.body.classList.remove('wopen');
-  dragging = true; moved = 0; lastX = e.clientX; lastY = e.clientY; pendX = pendY = 0; wheel0 = wheel;
+  dragging = true; moved = 0; lastX = e.clientX; lastY = e.clientY; pendX = pendY = 0; wheel0 = wheel; gridVel = 0;
   document.body.classList.add('dragging');
 }
 cv.addEventListener('pointerdown', onDown);
@@ -523,6 +523,7 @@ addEventListener('pointermove', e => {
   const dx = e.clientX - lastX, dy = e.clientY - lastY;
   lastX = e.clientX; lastY = e.clientY; moved += Math.abs(dx) + Math.abs(dy);
   if (level === 0) { pendW -= dx * 1.8 * state.globes.length / (TAU * ovRx()); return; }   // översikt: snurra hjulet
+  if (level === 2 && !path.length && gridMax > 0) { gridScroll = clamp(gridScroll - dy, 0, gridMax); gridVel = -dy; return; }   // inuti: scrolla apparna
   pendY += dx * 0.0055; pendX -= dy * 0.0055;
 });
 const endDrag = e => {
@@ -551,7 +552,13 @@ function zoomBy(f) {   // f > 1 zoomar in. Snäpper mellan översikt ↔ glob �
 }
 addEventListener('wheel', e => {
   if (e.target.closest('.widget,#modal,#top,#ideaBar')) return;
-  e.preventDefault(); zoomBy(Math.exp(clamp(-e.deltaY, -150, 150) * 0.0012));
+  e.preventDefault();
+  if (level === 2 && !path.length && gridMax > 0) {   // inuti med många appar: hjulet scrollar först, zoomar ut först vid kanten
+    const to = clamp(gridScroll + clamp(e.deltaY, -150, 150), 0, gridMax), now = performance.now();
+    if (to !== gridScroll) { gridScroll = to; gridVel = 0; gridWheelAt = now; return; }
+    if (now - gridWheelAt < 500) { gridWheelAt = now; return; }
+  }
+  zoomBy(Math.exp(clamp(-e.deltaY, -150, 150) * 0.0012));
 }, { passive: false });
 function kick(s) { for (let i = 0; i < N; i++) { P.vx[i] += (Math.random() - .5) * s; P.vy[i] += (Math.random() - .5) * s; P.vz[i] += (Math.random() - .5) * s; } }
 let wheel = state.active, pendW = 0, wheelT = null, wheel0 = 0; const bgHits = [];
@@ -563,7 +570,7 @@ cv.addEventListener('click', e => {   // klick på en bakgrundsglob byter till d
 });
 function enterGlobe(j) {
   if (path.length) setPath([], 0);
-  if (j !== state.active) { state.active = j; save(); buildScene(); kick(0.25); }
+  if (j !== state.active) { state.active = j; gridScroll = 0; save(); buildScene(); kick(0.25); }
   zt = 1;
 }
 addEventListener('keydown', e => {
@@ -585,6 +592,8 @@ const IDEA_R = 0.4;
 let appNodes = [], ideaNodes = [], ovNodes = [], ACT = null, level = -1;
 // brainstorm: path = vägen av idéer man zoomat in genom, im = hur mycket mindmap-vyn syns (0–1)
 let path = [], mindNodes = [], mindTitle = null, im = 0, burst = 0, orbit = 0;
+// scrollning i apprutnätet inuti en glob
+let gridScroll = 0, gridMax = 0, gridVel = 0, gridWheelAt = 0;
 const fib = (i, n) => { const y = 1 - (i + 0.5) * 2 / n, r = Math.sqrt(1 - y * y), th = i * Math.PI * (3 - Math.sqrt(5));
   return [Math.cos(th) * r, y, Math.sin(th) * r]; };
 const MB = []; for (let i = 0; i < 520; i++) MB.push(...fib(i, 520));   // punkter för miniglober
@@ -606,8 +615,8 @@ function buildScene() {
   appsEl.textContent = ''; ideasEl.textContent = ''; ovEl.textContent = ''; appNodes = [];
   ideaNodes = g.ideas.map((it, i) => {
     const c = countDesc(it);
-    const node = el('div', { class: 'idea', role: 'button', tabIndex: 0, title: 'Zooma in i idén',
-      onclick: e => { if (!e.target.closest('button')) setPath([it], 1); },
+    const node = el('div', { class: 'idea', role: 'button', tabIndex: 0, title: 'Zooma in i idén', onpointerdown: onDown,
+      onclick: e => { if (moved < 7 && !e.target.closest('button')) setPath([it], 1); },
       onkeydown: e => { if (e.key === 'Enter' && e.target === node) setPath([it], 1); } },
       it.text, c ? el('span', { class: 'cnt', text: '+' + c }) : null,
       el('button', { class: 'ib', text: '✕', 'aria-label': 'Ta bort idé', onclick: () => {
@@ -910,11 +919,20 @@ function frame(now) {
   }
   // inuti globen: apparna i rader, idéerna i ett fält under dem
   const nA = appNodes.length, cell = W <= 760 ? 88 : 112, rowH = 100, cols = Math.max(1, Math.min(nA, Math.floor(Math.min(W - 80, 900) / cell)));
-  const rows = Math.ceil(nA / cols), gridTop = Math.max(84, H * 0.4 - rows * rowH / 2);
+  const rows = Math.ceil(nA / cols), topMin = W <= 760 ? 128 : 96, viewBot = H - (W <= 760 ? 150 : 120);
+  const gridTop = Math.max(topMin, H * 0.4 - rows * rowH / 2);
+  // Får inte allt plats mellan menyn och idéfältet går rutnätet att scrolla (dra, eller mushjulet).
   if (ins >= 0.02) {
-    const top = Math.round(gridTop + rows * rowH + 16), t = top + 'px';
-    if (ideasEl.style.top !== t) { ideasEl.style.top = t; ideasEl.style.maxHeight = Math.max(60, H - top - 112) + 'px'; }
-  }
+    const ideasH = ideasEl.scrollHeight;
+    gridMax = Math.max(0, gridTop + rows * rowH + 16 + ideasH - viewBot);
+    if (!dragging) { gridScroll += gridVel * dt; gridVel *= Math.pow(0.92, dt); }   // lite efterglid
+    gridScroll = clamp(gridScroll, 0, gridMax);
+    const top = Math.round(gridTop + rows * rowH + 16 - gridScroll), t = top + 'px';
+    if (ideasEl.style.top !== t) ideasEl.style.top = t;
+    // idéfältet klipps där det glider in under menyn eller ner bakom idéraden
+    const clip = `inset(${Math.max(0, topMin - 34 - top)}px 0 ${Math.max(0, top + ideasH - viewBot - 8)}px 0)`;
+    if (ideasEl.style.clipPath !== clip) ideasEl.style.clipPath = clip;
+  } else { gridScroll = gridVel = gridMax = 0; }
   const lv = ov > 0.5 ? 0 : ins > 0.5 ? 2 : 1;
   if (lv !== level) { level = lv; ideaBar.classList.toggle('on', lv === 2);
     [...$('#levels').children].forEach((b, i) => { b.classList.toggle('on', i === lv); b.setAttribute('aria-pressed', i === lv); }); }
@@ -928,10 +946,12 @@ function frame(now) {
     const sc = FOCAL / (FOCAL - z * APP_R), X0 = CX + x * APP_R * R * sc, Y0 = CY + y * APP_R * R * sc;
     // glider från sin plats på globen till sin plats i rutnätet när man zoomar in
     const row = Math.floor(n.i / cols), inRow = row === rows - 1 ? nA - row * cols : cols;
-    const X = X0 + (W / 2 + (n.i % cols - (inRow - 1) / 2) * cell - X0) * ins, Y = Y0 + (gridTop + row * rowH + 30 - Y0) * ins;
-    const front = z > -0.12 || ins > 0.6, depth = (z + 1) / 2 * (1 - ins) + ins;
+    const X = X0 + (W / 2 + (n.i % cols - (inRow - 1) / 2) * cell - X0) * ins, Y = Y0 + (gridTop + row * rowH + 30 - gridScroll - Y0) * ins;
+    // appar som scrollats ut ur rutnätets synliga del tonas bort
+    const fade = ins > 0.5 ? clamp((Y - topMin + 26) / 34, 0, 1) * clamp((viewBot - 30 - Y) / 34, 0, 1) : 1;
+    const front = (z > -0.12 || ins > 0.6) && fade > 0.3, depth = (z + 1) / 2 * (1 - ins) + ins;
     n.node.style.transform = `translate(${X.toFixed(1)}px,${Y.toFixed(1)}px) translate(-50%,-28px) scale(${(0.5 + depth * 0.62).toFixed(3)})`;
-    n.node.style.opacity = front ? (0.45 + depth * 0.55).toFixed(2) : (0.08 + depth * 0.35).toFixed(2);
+    n.node.style.opacity = ((z > -0.12 || ins > 0.6 ? 0.45 + depth * 0.55 : 0.08 + depth * 0.35) * fade).toFixed(2);
     n.node.style.zIndex = Math.round(z * 100) + 200;
     n.node.style.pointerEvents = front ? 'auto' : 'none';
     n.node.tabIndex = front ? 0 : -1;
