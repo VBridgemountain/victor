@@ -29,3 +29,17 @@ Annan port eller adress: miljövariablerna `VICTOR_PORT` och `VICTOR_BIND`.
   På Linux fortsätter de gå när agenten startas om.
 - Mallarnas startkommandon är förslag. Byt servernamn och lösenord i kommandot innan du startar.
 - Inställningar, loggar och hämtade spel ligger i `data/`.
+
+## Labb (kod, krets, anslutningar)
+
+Knappen Labb i panelen öppnar en testmiljö på `/lab.html`:
+
+- **Kod:** projekt med filer, kodredigerare med färgläggning och en kommandoterminal. ▶ Kör (F5) kör Python, JavaScript,
+  C och C++ med de verktyg som finns installerade på maskinen. Ctrl+S sparar. Projekten ligger i `data/projects`.
+- **Krets:** lägg ut ett styrkort (Arduino Uno, ESP32, Raspberry Pi Pico) och delar, dra sladdar mellan stiften och få
+  kopplingen kontrollerad: matning, jord, spänningsnivåer, PWM/analog/I2C-stift, ström och saknade motstånd.
+  "Skapa kod" gör ett kodskelett med en konstant per inkopplat stift. Kretsen sparas som `krets.json` i projektet.
+- **Anslutningar:** vilka språk som är installerade, inkopplade kort (serieportar) och test av om en adress och port svarar.
+
+Terminalen är ett skal utan riktig tty: vanliga kommandon fungerar, men inte helskärmsprogram som vim.
+Kretskontrollen följer kopplingsregler och är ingen elektrisk simulering.

@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#02060b">
+<title>V.I.C.T.O.R. Labb — NoirLab</title>
+<style>
+:root{
+  --rgb:0,216,255; --accent:rgb(var(--rgb)); --bg:#02060b;
+  --text:color-mix(in srgb,var(--accent) 22%,#fff); --dim:color-mix(in srgb,var(--accent) 45%,#8a98a3);
+  --line:rgba(var(--rgb),.32); --panel:rgba(var(--rgb),.055);
+  --ok:#3dffa0; --wait:#ffc24d; --warn:#ff5a4d;
+  --mono:Consolas,"Cascadia Mono","SF Mono",Menlo,monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{background:radial-gradient(ellipse at 50% 120%,rgba(var(--rgb),.12),transparent 50%),var(--bg);color:var(--text);
+  font:14px/1.45 "Segoe UI",system-ui,sans-serif;display:flex;flex-direction:column;overflow:hidden}
+button,input,textarea,select{font:inherit;color:inherit}
+header{display:flex;align-items:center;gap:10px;padding:12px 16px;flex-wrap:wrap;flex:none}
+.brand{font:600 15px var(--mono);letter-spacing:.42em;color:var(--accent);text-shadow:0 0 12px rgba(var(--rgb),.7)}
+.brand small{display:block;font:10px var(--mono);letter-spacing:.3em;color:var(--dim);margin-top:2px}
+.sp{flex:1}
+.btn,.tab{background:var(--panel);border:1px solid var(--line);padding:7px 13px;cursor:pointer;font:11px var(--mono);letter-spacing:.14em;text-transform:uppercase;text-decoration:none;
+  clip-path:polygon(7px 0,100% 0,100% calc(100% - 7px),calc(100% - 7px) 100%,0 100%,0 7px)}
+.btn:hover,.tab:hover,.btn:focus-visible{background:rgba(var(--rgb),.16);border-color:var(--accent);outline:none}
+.btn.pri,.tab.on{background:rgba(var(--rgb),.22);border-color:var(--accent);color:#fff} .btn.red{border-color:var(--warn);color:var(--warn)}
+.btn:disabled{opacity:.35;cursor:default}
+.in{background:rgba(var(--rgb),.06);border:1px solid var(--line);padding:6px 9px;outline:none;min-width:0} .in:focus{border-color:var(--accent)}
+select.in option{background:#04101a}
+.view{flex:1;min-height:0;display:none;padding:0 16px 16px;gap:12px} .view.on{display:grid}
+.w{background:rgba(2,8,14,.8);border:1px solid var(--line);min-height:0;min-width:0;display:flex;flex-direction:column}
+.w h2{margin:0;padding:7px 11px;font:11px var(--mono);letter-spacing:.2em;text-transform:uppercase;color:var(--accent);border-bottom:1px solid var(--line);background:var(--panel);display:flex;gap:8px;align-items:center;flex:none}
+.w h2 i{font-style:normal;color:var(--dim);letter-spacing:.06em;text-transform:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.w h2 .sp{flex:1} .w h2 button{font-size:10px;padding:3px 8px}
+.scroll{overflow:auto;flex:1;min-height:0}
+.note{font-size:12px;color:var(--dim);line-height:1.4;margin:0;padding:9px 11px}
+
+/* kod */
+#vCode{grid-template-columns:230px 1fr;grid-template-rows:1fr 34%}
+#files{grid-row:1 / 3}
+.f{display:flex;align-items:center;gap:6px;padding:4px 10px;cursor:pointer;font:12px var(--mono);white-space:nowrap}
+.f:hover{background:var(--panel)} .f.on{background:rgba(var(--rgb),.16);color:#fff} .f.dir{color:var(--dim);cursor:default}
+.f span{overflow:hidden;text-overflow:ellipsis;flex:1} .f button{background:none;border:0;color:var(--dim);cursor:pointer;opacity:0;padding:0 3px} .f:hover button{opacity:1} .f button:hover{color:var(--warn)}
+.ed{position:relative;flex:1;min-height:0;display:flex;font:13px/1.5 var(--mono)}
+#gut{flex:none;width:44px;padding:8px 6px 8px 0;text-align:right;color:rgba(var(--rgb),.35);overflow:hidden;white-space:pre;user-select:none;border-right:1px solid rgba(var(--rgb),.12)}
+.edin{position:relative;flex:1;min-width:0}
+#hl,#ta{position:absolute;inset:0;margin:0;padding:8px 10px;border:0;font:inherit;white-space:pre;overflow:auto;tab-size:4}
+#hl{pointer-events:none;color:#cfe6ef;overflow:hidden} #ta{background:none;color:transparent;caret-color:#fff;resize:none;outline:none}
+#ta::selection{background:rgba(var(--rgb),.3)}
+.k{color:#ff9cf0} .s{color:#a5e88a} .c{color:#5f7f8c;font-style:italic} .n{color:#ffc24d} .fn{color:#7fd6ff}
+#out{margin:0;padding:8px 10px;font:12px/1.45 var(--mono);white-space:pre-wrap;overflow-wrap:anywhere;overflow:auto;flex:1;min-height:0;color:#b9d6e2;user-select:text}
+.cmd{display:flex;border-top:1px solid var(--line);flex:none} .cmd b{padding:6px 2px 6px 10px;color:var(--accent);font:13px var(--mono)}
+.cmd input{flex:1;background:none;border:0;outline:none;font:13px var(--mono);padding:6px}
+
+/* krets */
+#vCirc{grid-template-columns:200px 1fr 300px}
+.pal{padding:5px 10px;cursor:pointer;font-size:13px;display:flex;gap:8px;align-items:center} .pal:hover{background:var(--panel)} .pal i{font:10px var(--mono);font-style:normal;color:var(--dim);margin-left:auto}
+.palh{padding:9px 10px 3px;font:10px var(--mono);letter-spacing:.16em;color:var(--dim);text-transform:uppercase}
+#stage{flex:1;min-height:0;width:100%;background:
+  linear-gradient(rgba(var(--rgb),.05) 1px,transparent 1px) 0 0/20px 20px,linear-gradient(90deg,rgba(var(--rgb),.05) 1px,transparent 1px) 0 0/20px 20px;touch-action:none;user-select:none}
+.comp rect.body{fill:rgba(4,16,26,.95);stroke:var(--line);stroke-width:1.2;cursor:move} .comp.sel rect.body{stroke:var(--accent);stroke-width:2}
+.comp text{font:10px var(--mono);fill:#cfe6ef;pointer-events:none} .comp text.t{font:600 12px "Segoe UI",sans-serif;fill:#fff}
+.pin{fill:#04101a;stroke:var(--accent);stroke-width:1.2;cursor:crosshair} .pin:hover,.pin.act{fill:var(--accent)} .pin.pw{stroke:#ff6b5e} .pin.gd{stroke:#8a98a3}
+.wire{fill:none;stroke-width:2.2;cursor:pointer;opacity:.9} .wire:hover,.wire.sel{stroke-width:4;opacity:1}
+.res{padding:8px 11px;border-bottom:1px solid rgba(var(--rgb),.12);font-size:13px;line-height:1.4;cursor:default}
+.res b{display:block;font:10px var(--mono);letter-spacing:.14em;margin-bottom:2px}
+.res.e b{color:var(--warn)} .res.w b{color:var(--wait)} .res.i b{color:var(--accent)} .res.g b{color:var(--ok)}
+
+/* anslutningar */
+#vConn{grid-template-columns:repeat(3,1fr);align-content:start}
+.kv{display:flex;justify-content:space-between;gap:10px;font:12px var(--mono);padding:5px 11px;border-bottom:1px solid rgba(var(--rgb),.1)} .kv span:last-child{color:var(--ok);text-align:right} .kv.no span:last-child{color:var(--dim)}
+.rowf{display:flex;gap:8px;padding:10px 11px;flex-wrap:wrap}
+#toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);z-index:50;background:rgba(2,8,14,.96);border:1px solid var(--warn);color:#fff;padding:9px 16px;font-size:13px;display:none;max-width:calc(100vw - 30px)}
+@media (max-width:900px){
+  body{overflow:auto;height:auto} .view.on{display:flex;flex-direction:column} .w{min-height:240px} #files{max-height:220px}
+  #edw{height:60vh} #stagew{height:70vh} #termw{height:44vh}
+}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">V.I.C.T.O.R. LABB<small>BY NOIRLAB</small></div>
+  <button class="tab on" data-v="vCode">Kod</button>
+  <button class="tab" data-v="vCirc">Krets</button>
+  <button class="tab" data-v="vConn">Anslutningar</button>
+  <div class="sp"></div>
+  <select class="in" id="proj" aria-label="Projekt"></select>
+  <button class="btn" id="bNewP">+ Projekt</button>
+  <a class="btn" href="/">← Panel</a>
+</header>
+
+<div class="view on" id="vCode">
+  <section class="w" id="files"><h2>Filer <span class="sp"></span><button class="btn" id="bNewF">+ Fil</button></h2><div class="scroll" id="tree"></div></section>
+  <section class="w" id="edw"><h2><i id="fname">ingen fil öppen</i><span class="sp"></span><button class="btn" id="bSave" disabled>Spara</button><button class="btn pri" id="bRun" disabled>▶ Kör</button></h2>
+    <div class="ed"><div id="gut"></div><div class="edin"><pre id="hl"></pre><textarea id="ta" spellcheck="false" autocapitalize="off" autocomplete="off" disabled></textarea></div></div></section>
+  <section class="w" id="termw"><h2>Terminal <span class="sp"></span><button class="btn" id="bClr">Rensa</button><button class="btn red" id="bKill">Avbryt / starta om</button></h2>
+    <pre id="out"></pre><div class="cmd"><b>›</b><input id="cmd" placeholder="skriv ett kommando och tryck Enter" autocomplete="off" spellcheck="false"></div></section>
+</div>
+
+<div class="view" id="vCirc">
+  <section class="w"><h2>Delar</h2><div class="scroll" id="pal"></div></section>
+  <section class="w" id="stagew"><h2><i>Dra delar · klicka på ett stift och sedan ett annat för att dra en sladd · Delete tar bort markerad</i><span class="sp"></span>
+    <button class="btn" id="bCode">Skapa kod</button><button class="btn" id="bClearC">Töm</button></h2><svg id="stage"></svg></section>
+  <section class="w"><h2>Kontroll <i id="sum"></i></h2><div class="scroll" id="results"></div>
+    <p class="note">Kontrollen följer vanliga kopplingsregler (spänning, jord, stiftens förmågor, ström). Den är ingen elektrisk simulering: läs databladet för dina delar innan du bygger.</p></section>
+</div>
+
+<div class="view" id="vConn">
+  <section class="w"><h2>Språk och verktyg <span class="sp"></span><button class="btn" id="bTools">Uppdatera</button></h2><div id="tools"><p class="note">Läser …</p></div></section>
+  <section class="w"><h2>Inkopplade kort (serieportar)</h2><div id="serial"><p class="note">Läser …</p></div>
+    <p class="note">Här syns Arduino, ESP32 och liknande kort som är inkopplade med USB i den maskin som kör programmet.</p></section>
+  <section class="w"><h2>Testa anslutning</h2><div class="rowf"><input class="in" id="cHost" placeholder="adress, t.ex. 192.168.0.50" style="flex:2"><input class="in" id="cPort" placeholder="port" inputmode="numeric" style="flex:1;width:70px"><button class="btn pri" id="bChk">Testa</button></div>
+    <div id="chk"></div><p class="note">Provar att öppna en TCP-anslutning från servern till en enhet eller tjänst, t.ex. en ESP32 med webbserver (port 80) eller en MQTT-broker (port 1883).</p></section>
+</div>
+<div id="toast"></div>
+
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+function h(tag, props, ...kids) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(props || {})) { if (k.startsWith('on')) e.addEventListener(k.slice(2), v); else if (k === 'class') e.className = v; else if (v !== false && v != null) e.setAttribute(k, v === true ? '' : v); }
+  for (const k of kids.flat(Infinity)) if (k != null && k !== false) e.append(k.nodeType ? k : String(k));
+  return e;
+}
+const put = (el, ...kids) => el.replaceChildren(...h('div', null, kids).childNodes);
+function toast(t) { const e = $('toast'); e.textContent = t; e.style.display = 'block'; clearTimeout(toast.t); toast.t = setTimeout(() => e.style.display = 'none', 5000); }
+async function call(method, url, data) {
+  const r = await fetch(url, { method, headers: method === 'GET' ? {} : { 'Content-Type': 'application/json' }, body: method === 'GET' ? undefined : JSON.stringify(data || {}) });
+  if (r.status === 401) { location.href = '/'; throw new Error('Inte inloggad.'); }
+  const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.error || 'Något gick fel.');
+  return j;
+}
+const tryIt = fn => async (...a) => { try { return await fn(...a); } catch (e) { toast(e.message); } };
+
+// ------------------------------------------------------------------ flikar + projekt
+document.querySelectorAll('.tab').forEach(t => t.onclick = () => {
+  document.querySelectorAll('.tab').forEach(x => x.classList.toggle('on', x === t));
+  document.querySelectorAll('.view').forEach(v => v.classList.toggle('on', v.id === t.dataset.v));
+  if (t.dataset.v === 'vConn') loadTools(); if (t.dataset.v === 'vCirc') drawCirc();
+});
+let projects = [], project = localStorage.getItem('lab-project') || '', tools = null, platform = 'win';
+async function loadTree() {
+  projects = (await call('GET', '/api/lab/tree')).projects;
+  if (!projects.find(p => p.name === project)) project = projects[0] ? projects[0].name : '';
+  put($('proj'), projects.length ? projects.map(p => h('option', { value: p.name, selected: p.name === project }, p.name)) : h('option', { value: '' }, 'inget projekt'));
+  drawTree();
+}
+function drawTree() {
+  const p = projects.find(x => x.name === project);
+  put($('tree'), !p ? h('p', { class: 'note' }, 'Skapa ett projekt med + Projekt för att börja.') : p.files.length ? p.files.map(f => {
+    const depth = f.path.split('/').length - 1, name = f.path.split('/').pop();
+    return h('div', { class: 'f' + (f.dir ? ' dir' : '') + (f.path === file ? ' on' : ''), style: `padding-left:${10 + depth * 14}px`, onclick: f.dir ? null : () => openFile(f.path) },
+      h('span', null, (f.dir ? '▸ ' : '') + name), h('button', { title: 'Ta bort', onclick: e => { e.stopPropagation(); delPath(f.path); } }, '✕')); })
+    : h('p', { class: 'note' }, 'Projektet är tomt. Skapa en fil med + Fil, t.ex. main.py.'));
+}
+$('proj').onchange = tryIt(async () => { if (!(await leaveFile())) { $('proj').value = project; return; } project = $('proj').value; localStorage.setItem('lab-project', project); closeFile(); drawTree(); await startTerm(); await loadCirc(); });
+$('bNewP').onclick = tryIt(async () => { const n = prompt('Namn på det nya projektet:'); if (!n) return;
+  await call('POST', '/api/lab/project', { name: n.trim() }); project = n.trim(); localStorage.setItem('lab-project', project); closeFile(); await loadTree(); await startTerm(); await loadCirc(); });
+$('bNewF').onclick = tryIt(async () => { if (!project) return toast('Skapa ett projekt först.');
+  const n = prompt('Filnamn (t.ex. main.py, app.js, robot.cpp eller mapp/fil.py):'); if (!n) return;
+  const START = { py: 'print("Hej från V.I.C.T.O.R.")\n', js: 'console.log("Hej från V.I.C.T.O.R.");\n', cpp: '#include <iostream>\n\nint main() {\n    std::cout << "Hej från V.I.C.T.O.R." << std::endl;\n    return 0;\n}\n',
+    c: '#include <stdio.h>\n\nint main(void) {\n    printf("Hej från V.I.C.T.O.R.\\n");\n    return 0;\n}\n', ino: 'void setup() {\n  Serial.begin(115200);\n}\n\nvoid loop() {\n}\n' };
+  const rel = n.trim().replace(/\\/g, '/').replace(/^\/+/, '');
+  await call('POST', '/api/lab/file', { path: project + '/' + rel, text: START[rel.split('.').pop().toLowerCase()] || '' }); await loadTree(); await openFile(rel); });
+const delPath = tryIt(async rel => { if (!confirm(`Ta bort "${rel}" ur projektet ${project}? Det går inte att ångra.`)) return;
+  await call('POST', '/api/lab/delete', { path: project + '/' + rel }); if (file && (file === rel || file.startsWith(rel + '/'))) closeFile(); await loadTree(); });
+
+// ------------------------------------------------------------------ kodredigerare
+const ta = $('ta'), hl = $('hl'), gut = $('gut');
+let file = '', saved = '';
+const KW = {
+  py: 'False None True and as assert async await break class continue def del elif else except finally for from global if import in is lambda nonlocal not or pass raise return try while with yield self print range len',
+  js: 'async await break case catch class const continue default delete do else export extends false finally for from function if import in instanceof let new null of return static super switch this throw true try typeof undefined var void while yield',
+  cpp: 'auto bool break case catch char class const constexpr continue default delete do double else enum explicit false float for if include define inline int long namespace new nullptr private protected public return short signed sizeof static struct switch template this throw true try typedef unsigned using virtual void while uint8_t uint16_t uint32_t String byte HIGH LOW INPUT OUTPUT INPUT_PULLUP',
+};
+const langOf = f => { const e = f.split('.').pop().toLowerCase(); return e === 'py' ? 'py' : ['js', 'mjs', 'ts', 'json'].includes(e) ? 'js' : ['c', 'cc', 'cpp', 'h', 'hpp', 'ino'].includes(e) ? 'cpp' : ''; };
+const esc = s => s.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+function highlight(src, lang) {   // enkel färgläggning: kommentarer, strängar, tal, nyckelord, funktionsanrop
+  if (!lang) return esc(src);
+  const kw = new Set(KW[lang].split(' '));
+  const re = lang === 'py' ? /(#[^\n]*)|("""[\s\S]*?"""|'''[\s\S]*?'''|"(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*')|(\b\d[\w.]*\b)|([A-Za-z_]\w*)(?=(\s*\()?)/g
+                         : /(\/\/[^\n]*|\/\*[\s\S]*?\*\/)|("(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'|`(?:\\.|[^`\\])*`)|(\b\d[\w.]*\b)|([A-Za-z_$]\w*)(?=(\s*\()?)/g;
+  let out = '', last = 0, m;
+  while ((m = re.exec(src))) {
+    out += esc(src.slice(last, m.index)); last = re.lastIndex;
+    const t = esc(m[0]);
+    out += m[1] ? `<span class="c">${t}</span>` : m[2] ? `<span class="s">${t}</span>` : m[3] ? `<span class="n">${t}</span>`
+         : kw.has(m[4]) ? `<span class="k">${t}</span>` : m[5] !== undefined ? `<span class="fn">${t}</span>` : t;
+  }
+  return out + esc(src.slice(last));
+}
+function paint() {
+  hl.innerHTML = highlight(ta.value, langOf(file)) + '\n';
+  const n = ta.value.split('\n').length; if (gut._n !== n) { gut._n = n; gut.textContent = Array.from({ length: n }, (_, i) => i + 1).join('\n'); }
+  $('bSave').disabled = !file || ta.value === saved; $('fname').textContent = file ? file + (ta.value === saved ? '' : ' ●') : 'ingen fil öppen';
+  sync();
+}
+const sync = () => { hl.scrollTop = ta.scrollTop; hl.scrollLeft = ta.scrollLeft; gut.scrollTop = ta.scrollTop; };
+ta.addEventListener('input', paint); ta.addEventListener('scroll', sync);
+ta.addEventListener('keydown', e => {
+  if (e.key === 'Tab') { e.preventDefault(); document.execCommand('insertText', false, langOf(file) === 'py' ? '    ' : '  '); }
+  else if (e.key === 'Enter') {   // behåll indraget, och öka det efter : eller {
+    const before = ta.value.slice(0, ta.selectionStart), line = before.slice(before.lastIndexOf('\n') + 1), ind = line.match(/^\s*/)[0];
+    e.preventDefault(); document.execCommand('insertText', false, '\n' + ind + (/[:{]\s*$/.test(line) ? (langOf(file) === 'py' ? '    ' : '  ') : ''));
+  }
+});
+addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); save(); }
+  if (e.key === 'F5' && file) { e.preventDefault(); runFile(); } });
+addEventListener('beforeunload', e => { if (file && ta.value !== saved) e.preventDefault(); });
+const leaveFile = async () => !file || ta.value === saved || confirm(`"${file}" har ändringar som inte är sparade. Fortsätta utan att spara?`);
+function closeFile() { file = ''; saved = ''; ta.value = ''; ta.disabled = true; $('bRun').disabled = true; paint(); }
+const openFile = tryIt(async rel => { if (rel === file || !(await leaveFile())) return;
+  const j = await call('GET', '/api/lab/file?path=' + encodeURIComponent(project + '/' + rel));
+  file = rel; saved = ta.value = j.text; ta.disabled = false; $('bRun').disabled = false; ta.scrollTop = 0; paint(); drawTree(); ta.focus(); });
+const save = tryIt(async () => { if (!file) return; const t = ta.value; await call('POST', '/api/lab/file', { path: project + '/' + file, text: t }); saved = t; paint(); return true; });
+$('bSave').onclick = save;
+
+// ------------------------------------------------------------------ terminal
+const out = $('out'); let termId = null, es = null;
+function print(s) { const bottom = out.scrollTop + out.clientHeight >= out.scrollHeight - 30; out.append(s); if (out.textContent.length > 120000) out.textContent = out.textContent.slice(-80000); if (bottom) out.scrollTop = out.scrollHeight; }
+const startTerm = tryIt(async () => {
+  if (es) es.close(); if (termId) call('POST', '/api/lab/term/kill', { id: termId }).catch(() => {});
+  termId = null; out.textContent = ''; if (!project) return;
+  termId = (await call('POST', '/api/lab/term', { project })).id;
+  es = new EventSource('/api/lab/term/stream?id=' + termId); es.onmessage = e => print(JSON.parse(e.data));
+});
+const sendCmd = tryIt(async text => { if (!termId) await startTerm(); if (!termId) return toast('Skapa ett projekt först.');
+  print('› ' + text + '\n');
+  try { await call('POST', '/api/lab/term/input', { id: termId, text }); } catch (e) { await startTerm(); await call('POST', '/api/lab/term/input', { id: termId, text }); } });
+const hist = []; let hi = 0;
+$('cmd').addEventListener('keydown', e => { const c = $('cmd');
+  if (e.key === 'Enter' && c.value.trim()) { hist.push(c.value); hi = hist.length; sendCmd(c.value); c.value = ''; }
+  else if (e.key === 'ArrowUp' && hi > 0) { c.value = hist[--hi]; e.preventDefault(); } else if (e.key === 'ArrowDown') { c.value = hist[++hi] || ''; hi = Math.min(hi, hist.length); } });
+$('bClr').onclick = () => out.textContent = ''; $('bKill').onclick = startTerm;
+const runFile = tryIt(async () => {
+  if (!file) return; if (ta.value !== saved && !(await save())) return;
+  if (!tools) await loadTools();
+  const q = s => '"' + s + '"', win = platform === 'win', f = win ? file.replace(/\//g, '\\') : file, ext = file.split('.').pop().toLowerCase(), base = f.replace(/\.[^.\\/]+$/, '');
+  const need = (k, name) => { if (!tools[k]) { toast(`${name} är inte installerat på maskinen som kör programmet.`); return null; } return tools[k].cmd; };
+  let cmd;
+  if (ext === 'py') { const c = need('python', 'Python'); cmd = c && `${c} ${q(f)}`; }
+  else if (['js', 'mjs'].includes(ext)) { const c = need('node', 'Node.js'); cmd = c && `${c} ${q(f)}`; }
+  else if (['cpp', 'cc', 'c'].includes(ext)) { const c = ext === 'c' ? need('gcc', 'C-kompilatorn gcc') : need('g++', 'C++-kompilatorn g++');
+    const exe = win ? base + '.exe' : (base.includes('/') ? base : './' + base) + '.out'; cmd = c && `${c} ${q(f)} -o ${q(exe)} && ${q(exe)}`; }
+  else if (ext === 'ino') return toast('Arduino-kod körs på kortet, inte på datorn. Ladda upp den med Arduino IDE eller arduino-cli.');
+  else return toast('Vet inte hur .' + ext + '-filer körs. Skriv kommandot i terminalen.');
+  if (cmd) sendCmd(cmd);
+});
+$('bRun').onclick = runFile;
+
+// ------------------------------------------------------------------ anslutningar
+const loadTools = tryIt(async () => {
+  const j = await call('GET', '/api/lab/tools'); tools = j.tools; platform = j.platform;
+  const NAMES = { python: 'Python', node: 'JavaScript (Node.js)', 'g++': 'C++ (g++)', gcc: 'C (gcc)', git: 'Git', 'arduino-cli': 'Arduino CLI' };
+  put($('tools'), Object.entries(NAMES).map(([k, n]) => h('div', { class: 'kv' + (tools[k] ? '' : ' no') }, h('span', null, n), h('span', null, tools[k] ? 'version ' + tools[k].v : 'inte installerat'))));
+  put($('serial'), j.serial.length ? j.serial.map(s => h('div', { class: 'kv' }, h('span', null, s), h('span', null, 'inkopplad'))) : h('p', { class: 'note' }, 'Inga kort är inkopplade just nu.'));
+});
+$('bTools').onclick = loadTools;
+$('bChk').onclick = tryIt(async () => { const host = $('cHost').value.trim(), port = $('cPort').value.trim();
+  put($('chk'), h('p', { class: 'note' }, 'Testar …'));
+  try { const r = await call('POST', '/api/lab/check', { host, port });
+    put($('chk'), h('div', { class: 'kv' + (r.ok ? '' : ' no') }, h('span', null, `${host}:${port}`), h('span', null, r.ok ? `öppen · svar på ${r.ms} ms` : r.why))); }
+  catch (e) { put($('chk'), h('p', { class: 'note' }, e.message)); } });
+
+// ------------------------------------------------------------------ kretsbyggare
+// Stift: k = slag (p5/p3 = matning ut, vin = matning in, g = jord, io = digitalt stift), f = förmågor (p=PWM, a=analog in, d=SDA, c=SCL, i=bara ingång)
+const io = (n, f = '') => ({ n, k: 'io', f });
+const BOARDS = {
+  uno: { name: 'Arduino Uno', v: 5, lang: 'ino', max5: 450, max3: 50, pinMa: 20, pins: [
+    ...[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13].map(i => io('D' + i, [3, 5, 6, 9, 10, 11].includes(i) ? 'p' : '')),
+    io('A0', 'a'), io('A1', 'a'), io('A2', 'a'), io('A3', 'a'), io('A4', 'ad'), io('A5', 'ac'),
+    { n: '5V', k: 'p5' }, { n: '3V3', k: 'p3' }, { n: 'GND', k: 'g' }, { n: 'GND2', k: 'g' }, { n: 'VIN', k: 'vin', min: 7, max: 12 }] },
+  esp32: { name: 'ESP32 DevKit', v: 3.3, lang: 'ino', max5: 500, max3: 400, pinMa: 12, pins: [
+    ...[2, 4, 5, 12, 13, 14, 15, 16, 17, 18, 19, 23, 25, 26, 27].map(i => io('GPIO' + i, 'p' + ([2, 4, 12, 13, 14, 15, 25, 26, 27].includes(i) ? 'a' : ''))),
+    io('GPIO21', 'pd'), io('GPIO22', 'pc'), io('GPIO32', 'pa'), io('GPIO33', 'pa'), io('GPIO34', 'ai'), io('GPIO35', 'ai'),
+    { n: '5V', k: 'p5' }, { n: '3V3', k: 'p3' }, { n: 'GND', k: 'g' }, { n: 'GND2', k: 'g' }] },
+  pico: { name: 'Raspberry Pi Pico', v: 3.3, lang: 'py', max5: 450, max3: 300, pinMa: 12, pins: [
+    ...Array.from({ length: 23 }, (_, i) => io('GP' + i, 'p' + (i % 2 ? 'c' : 'd'))), io('GP26', 'pad'), io('GP27', 'pac'), io('GP28', 'pa'),
+    { n: 'VBUS', k: 'p5' }, { n: '3V3', k: 'p3' }, { n: 'GND', k: 'g' }, { n: 'GND2', k: 'g' }, { n: 'VSYS', k: 'vin', min: 1.8, max: 5.5 }] },
+};
+// Delar. r = roll: v = matning in (min/max volt, ma = typisk ström), g = jord, s = signal från kortet (need = förmåga som krävs),
+// o = signal till kortet (lvl = 'v' följer matningen, need), x = genomgående (motstånd, knapp, lysdiod, motor), b = batteripol
+const PARTS = {
+  led: { name: 'Lysdiod', cat: 'Ut', pins: [{ n: 'A', r: 'x' }, { n: 'K', r: 'x' }] },
+  res: { name: 'Motstånd 220 Ω', cat: 'Passiva', pins: [{ n: '1', r: 'x' }, { n: '2', r: 'x' }] },
+  btn: { name: 'Knapp', cat: 'In', pins: [{ n: '1', r: 'x' }, { n: '2', r: 'x' }] },
+  pot: { name: 'Potentiometer', cat: 'In', pins: [{ n: 'VCC', r: 'v', min: 1.8, max: 5.5, ma: 1 }, { n: 'OUT', r: 'o', lvl: 'v', need: 'a' }, { n: 'GND', r: 'g' }] },
+  servo: { name: 'Servo SG90', cat: 'Ut', pins: [{ n: 'SIG', r: 's', need: 'p' }, { n: 'V+', r: 'v', min: 4.8, max: 6, ma: 250 }, { n: 'GND', r: 'g' }] },
+  buzz: { name: 'Summer (passiv)', cat: 'Ut', pins: [{ n: 'SIG', r: 's', need: 'p' }, { n: 'GND', r: 'g' }] },
+  sonar: { name: 'Avståndsmätare HC-SR04', cat: 'Sensorer', pins: [{ n: 'VCC', r: 'v', min: 4.5, max: 5.5, ma: 15 }, { n: 'TRIG', r: 's' }, { n: 'ECHO', r: 'o', lvl: 'v' }, { n: 'GND', r: 'g' }] },
+  dht: { name: 'Temp/fukt DHT22', cat: 'Sensorer', pins: [{ n: 'VCC', r: 'v', min: 3.3, max: 5.5, ma: 2 }, { n: 'DATA', r: 'o', lvl: 'v' }, { n: 'GND', r: 'g' }] },
+  oled: { name: 'OLED-skärm I2C', cat: 'Ut', pins: [{ n: 'VCC', r: 'v', min: 3.3, max: 5.5, ma: 20 }, { n: 'GND', r: 'g' }, { n: 'SCL', r: 's', need: 'c' }, { n: 'SDA', r: 's', need: 'd' }] },
+  l298: { name: 'Motordrivare L298N', cat: 'Motor', pins: [{ n: 'VS', r: 'v', min: 5, max: 35, ma: 0 }, { n: 'GND', r: 'g' }, { n: 'ENA', r: 's', need: 'p' }, { n: 'IN1', r: 's' }, { n: 'IN2', r: 's' }, { n: 'OUT1', r: 'x' }, { n: 'OUT2', r: 'x' }] },
+  motor: { name: 'DC-motor', cat: 'Motor', pins: [{ n: 'M+', r: 'x' }, { n: 'M-', r: 'x' }] },
+  bat6: { name: 'Batteri 6 V (4×AA)', cat: 'Matning', volt: 6, pins: [{ n: '+', r: 'b' }, { n: '−', r: 'g' }] },
+  bat9: { name: 'Batteri 9 V', cat: 'Matning', volt: 9, pins: [{ n: '+', r: 'b' }, { n: '−', r: 'g' }] },
+};
+const defOf = c => BOARDS[c.type] || PARTS[c.type], isBoard = c => !!BOARDS[c.type];
+let circ = { comps: [], wires: [] }, selC = null, selW = null, pend = null, cDirty = false;
+const SVG = 'http://www.w3.org/2000/svg', stage = $('stage');
+const s = (tag, attrs, ...kids) => { const e = document.createElementNS(SVG, tag); for (const k in attrs) if (attrs[k] != null) e.setAttribute(k, attrs[k]); e.append(...kids); return e; };
+function geom(c) {   // rutans storlek och varje stifts plats: kort har stift på båda sidor, delar på vänstersidan
+  const d = defOf(c), n = d.pins.length, two = isBoard(c), rows = two ? Math.ceil(n / 2) : n, w = two ? 190 : 150, hgt = 34 + rows * 18;
+  return { w, h: hgt, pins: d.pins.map((p, i) => { const right = two && i >= rows, r = right ? i - rows : i; return { ...p, x: right ? w : 0, y: 36 + r * 18, right }; }) };
+}
+const pinPos = id => { const [cid, pn] = id.split('|'), c = circ.comps.find(x => x.id === cid); if (!c) return null; const p = geom(c).pins.find(x => x.n === pn); return p && { x: c.x + p.x, y: c.y + p.y, right: p.right }; };
+function nets() {   // vilka stift som sitter ihop via sladdar
+  const par = new Map(), find = a => { while (par.get(a) !== a) { par.set(a, par.get(par.get(a))); a = par.get(a); } return a; };
+  for (const c of circ.comps) for (const p of defOf(c).pins) par.set(c.id + '|' + p.n, c.id + '|' + p.n);
+  for (const w of circ.wires) if (par.has(w.a) && par.has(w.b)) par.set(find(w.a), find(w.b));
+  const groups = new Map(); for (const k of par.keys()) { const r = find(k); if (!groups.has(r)) groups.set(r, []); groups.get(r).push(k); }
+  return { of: id => groups.get(find(id)) || [], groups: [...groups.values()] };
+}
+const info = id => { const [cid, pn] = id.split('|'), c = circ.comps.find(x => x.id === cid), d = defOf(c); return { c, d, p: d.pins.find(x => x.n === pn), board: isBoard(c), label: `${c.label} ${pn}` }; };
+
+function check() {   // kopplingskontroll: returnerar [{lvl:'e'|'w'|'i', text}]
+  const R = [], add = (lvl, text) => R.push({ lvl, text }), N = nets(), boards = circ.comps.filter(isBoard);
+  if (!circ.comps.length) return [{ lvl: 'i', text: 'Lägg ut ett kort och några delar från listan till vänster.' }];
+  if (!boards.length) add('i', 'Inget styrkort är utlagt än. Lägg till Arduino, ESP32 eller Pico för att kontrollera stiften.');
+  if (boards.length > 1) add('i', 'Flera styrkort: kom ihåg att de måste dela jord (GND) om de ska prata med varandra.');
+  // spänningen på varje nät, och kortslutningar
+  const volt = new Map();
+  for (const g of N.groups) {
+    const src = [], gnd = g.some(id => { const i = info(id); return i.board ? i.p.k === 'g' : i.p.r === 'g'; });
+    for (const id of g) { const i = info(id); if (i.board && i.p.k === 'p5') src.push([5, i.label]); else if (i.board && i.p.k === 'p3') src.push([3.3, i.label]); else if (i.p.r === 'b') src.push([i.d.volt, i.label]); }
+    const vs = [...new Set(src.map(x => x[0]))];
+    if (src.length && gnd) add('e', `Kortslutning: ${src[0][1]} sitter ihop med jord.`);
+    if (vs.length > 1) add('e', `Olika spänningar sitter ihop: ${src.map(x => x[1] + ' (' + x[0] + ' V)').join(' och ')}.`);
+    const v = vs.length ? Math.max(...vs) : gnd ? 0 : null; for (const id of g) volt.set(id, v);
+    if (v && g.length > 1) for (const id of g) { const i = info(id);
+      if (i.board && i.p.k === 'io') add('e', `${i.label} sitter direkt på ${v} V-matning. Ett digitalt stift ska inte kopplas rakt till matningen.`);
+      if (i.board && i.p.k === 'vin' && (v < i.p.min || v > i.p.max)) add(v > i.p.max ? 'e' : 'w', `${i.label} får ${v} V men vill ha ${i.p.min}–${i.p.max} V.`); }
+  }
+  const usedIo = new Map(), load = new Map();
+  for (const c of circ.comps) {
+    if (isBoard(c)) continue;
+    const d = defOf(c), con = p => N.of(c.id + '|' + p.n).filter(id => id !== c.id + '|' + p.n), free = d.pins.filter(p => !con(p).length);
+    if (free.length === d.pins.length) { add('w', `${c.label} är inte inkopplad.`); continue; }
+    if (free.length) add('w', `${c.label}: stiftet ${free.map(p => p.n).join(', ')} är inte inkopplat.`);
+    let vcc = null;
+    for (const p of d.pins) {
+      const id = c.id + '|' + p.n, others = con(p).map(info), v = volt.get(id), bio = others.filter(o => o.board && o.p.k === 'io');
+      if (!others.length) continue;
+      if (p.r === 'v') { vcc = v;
+        if (bio.length) add('e', `${c.label} ${p.n} matas från ${bio[0].label}. Ett digitalt stift orkar inte driva delen: koppla till 5V eller 3V3.`);
+        else if (v == null || v === 0) add('e', `${c.label} ${p.n} får ingen matning.`);
+        else if (v < p.min) add('e', `${c.label} får ${v} V men behöver minst ${p.min} V.`);
+        else if (v > p.max) add('e', `${c.label} får ${v} V men tål högst ${p.max} V.`);
+        for (const o of others) if (o.board && (o.p.k === 'p5' || o.p.k === 'p3')) { const k = o.c.id + o.p.k; load.set(k, { b: o, ma: (load.get(k)?.ma || 0) + p.ma }); } }
+      if (p.r === 'g' && v !== 0) add('e', `${c.label} ${p.n} är inte kopplad till jord (GND).`);
+      if (p.r === 's' || p.r === 'o') {
+        if (!bio.length) { add('w', `${c.label} ${p.n} går inte till något digitalt stift på kortet.`); continue; }
+        for (const o of bio) {
+          usedIo.set(o.label, [...(usedIo.get(o.label) || []), `${c.label} ${p.n}`]);
+          const f = o.p.f, NEED = { p: 'PWM', a: 'analog ingång', d: 'I2C-data (SDA)', c: 'I2C-klocka (SCL)' };
+          if (p.need && !f.includes(p.need)) add('e', `${c.label} ${p.n} behöver ett stift med ${NEED[p.need]}, men ${o.label} har inte det.`);
+          if (p.r === 's' && f.includes('i')) add('e', `${o.label} kan bara vara ingång och kan inte styra ${c.label} ${p.n}.`);
+        }
+      }
+    }
+    // signaler från delen in till kortet håller samma spänning som delens matning
+    for (const p of d.pins.filter(x => x.r === 'o' || (x.need === 'd' || x.need === 'c'))) for (const o of N.of(c.id + '|' + p.n).map(info))
+      if (o.board && o.p.k === 'io' && vcc && vcc > o.d.v + 0.3) add('e', `${c.label} ${p.n} ger ${vcc} V men ${o.label} tål bara ${o.d.v} V. Mata delen med 3V3 eller använd en nivåomvandlare/spänningsdelare.`);
+    if (c.type === 'led') {
+      const a = con(d.pins[0]).map(info), k = con(d.pins[1]).map(info), hasR = [...a, ...k].some(o => o.c.type === 'res');
+      if (a.length && k.length && !hasR) add('e', `${c.label} saknar seriemotstånd. Koppla ett motstånd (ca 220 Ω) mellan stiftet och lysdioden, annars kan både lysdiod och stift gå sönder.`);
+      if (volt.get(c.id + '|A') === 0 && volt.get(c.id + '|K') !== 0 && k.length) add('w', `${c.label} verkar vara vänd åt fel håll: anoden (A) sitter på jord.`);
+    }
+    if (c.type === 'motor') for (const p of d.pins) for (const o of con(p).map(info)) {
+      if (o.board && o.p.k === 'io') add('e', `${c.label} sitter direkt på ${o.label}. En motor drar mer ström än stiftet tål: använd en motordrivare (t.ex. L298N).`);
+      if (o.board && (o.p.k === 'p5' || o.p.k === 'p3')) add('w', `${c.label} matas direkt från kortets ${o.p.n}. Motorer stör och drar mycket ström: använd motordrivare och egen matning.`); }
+    if (c.type === 'btn') { const ends = d.pins.map(p => con(p).map(info));
+      if (ends.every(e => e.length) && !ends.flat().some(o => o.board && o.p.k === 'io')) add('w', `${c.label} går inte till något digitalt stift.`);
+      else if (ends.flat().some(o => o.board && (o.p.k === 'p5' || o.p.k === 'p3'))) add('i', `${c.label} går till matning: lägg till ett neddragningsmotstånd, eller koppla den till GND och använd INPUT_PULLUP i koden.`); }
+    if (c.type === 'servo' && [...N.of(c.id + '|V+')].map(info).some(o => o.board)) add('i', `${c.label} matas från kortet. Ett servo går bra, men flera servon eller tung last behöver egen 5–6 V-matning med gemensam jord.`);
+    if (c.type === 'dht') add('i', `${c.label}: datastiftet behöver ett pull-up-motstånd på 10 kΩ till VCC om din modul inte redan har ett.`);
+    if (d.volt) { const neg = volt.get(c.id + '|−'), plus = con(d.pins[0]);
+      if (plus.length && boards.length && !N.of(c.id + '|−').map(info).some(o => o.board && o.p.k === 'g')) add('e', `${c.label} delar inte jord med kortet. Koppla batteriets minus till GND, annars fungerar inte signalerna.`); }
+  }
+  for (const [pin, users] of usedIo) if (users.length > 1 && !users.every(u => /SDA|SCL/.test(u))) add('w', `${pin} används av flera delar: ${users.join(', ')}.`);
+  for (const { b, ma } of load.values()) { const lim = b.p.k === 'p5' ? b.d.max5 : b.d.max3;
+    if (ma > lim) add('e', `Delarna på ${b.label} drar ungefär ${ma} mA, men stiftet ger högst ca ${lim} mA. Använd egen matning.`);
+    else if (ma > lim * 0.7) add('w', `Delarna på ${b.label} drar ungefär ${ma} mA av ca ${lim} mA. Det är nära gränsen.`); }
+  for (const b of boards) if (circ.comps.length > 1 && !defOf(b).pins.some(p => N.of(b.id + '|' + p.n).length > 1)) add('w', `${b.label} har inga sladdar inkopplade.`);
+  return R;
+}
+
+function drawCirc() {
+  const N = nets(), kids = [];
+  const colOf = id => { const v = N.of(id).map(info); return v.some(i => (i.board ? i.p.k === 'g' : i.p.r === 'g')) ? '#8a98a3' : v.some(i => (i.board && (i.p.k === 'p5' || i.p.k === 'p3' || i.p.k === 'vin')) || i.p.r === 'b' || i.p.r === 'v') ? '#ff6b5e' : 'rgb(0,216,255)'; };
+  circ.wires.forEach((w, i) => { const a = pinPos(w.a), b = pinPos(w.b); if (!a || !b) return;
+    const k = Math.max(40, Math.abs(b.x - a.x) * 0.5), ax = a.x + (a.right ? k : -k), bx = b.x + (b.right ? k : -k);
+    kids.push(s('path', { class: 'wire' + (selW === i ? ' sel' : ''), d: `M${a.x},${a.y} C${ax},${a.y} ${bx},${b.y} ${b.x},${b.y}`, stroke: colOf(w.a), 'data-w': i })); });
+  for (const c of circ.comps) { const g = geom(c), d = defOf(c);
+    kids.push(s('g', { class: 'comp' + (selC === c.id ? ' sel' : ''), transform: `translate(${c.x},${c.y})`, 'data-c': c.id },
+      s('rect', { class: 'body', width: g.w, height: g.h, rx: 4 }), s('text', { class: 't', x: g.w / 2, y: 17, 'text-anchor': 'middle' }, c.label),
+      ...g.pins.flatMap(p => { const id = c.id + '|' + p.n, cls = (isBoard(c) ? (p.k === 'g' ? ' gd' : p.k !== 'io' ? ' pw' : '') : (p.r === 'g' ? ' gd' : p.r === 'v' || p.r === 'b' ? ' pw' : ''));
+        return [s('text', { x: p.right ? g.w - 10 : 10, y: p.y + 3.5, 'text-anchor': p.right ? 'end' : 'start' }, p.n), s('circle', { class: 'pin' + cls + (pend === id ? ' act' : ''), cx: p.x, cy: p.y, r: 5.5, 'data-p': id })]; }))); }
+  stage.replaceChildren(...kids);
+  const res = check(), e = res.filter(r => r.lvl === 'e').length, w = res.filter(r => r.lvl === 'w').length, T = { e: 'FEL', w: 'VARNING', i: 'TIPS' };
+  $('sum').textContent = circ.comps.length ? (e || w ? `${e} fel · ${w} varningar` : 'inga fel hittade') : '';
+  put($('results'), !e && !w && circ.wires.length ? h('div', { class: 'res g' }, h('b', null, 'SER BRA UT'), 'Kontrollen hittar inga fel i kopplingen.') : null,
+    res.sort((a, b) => 'ewi'.indexOf(a.lvl) - 'ewi'.indexOf(b.lvl)).map(r => h('div', { class: 'res ' + r.lvl }, h('b', null, T[r.lvl]), r.text)));
+}
+let saveT = 0;
+function changed() { drawCirc(); clearTimeout(saveT); if (project) saveT = setTimeout(() => call('POST', '/api/lab/file', { path: project + '/krets.json', text: JSON.stringify(circ, null, 1) }).catch(e => toast(e.message)), 700); }
+const loadCirc = async () => { circ = { comps: [], wires: [] }; selC = selW = pend = null;
+  if (project) try { const j = JSON.parse((await call('GET', '/api/lab/file?path=' + encodeURIComponent(project + '/krets.json'))).text);
+    if (Array.isArray(j.comps) && Array.isArray(j.wires)) circ = { comps: j.comps.filter(c => defOf(c)), wires: j.wires }; } catch { /* ingen krets sparad än */ }
+  drawCirc(); };
+function addComp(type) { const d = BOARDS[type] || PARTS[type], n = circ.comps.filter(c => c.type === type).length;
+  const c = { id: Math.random().toString(36).slice(2, 8), type, label: d.name.split(' (')[0] + (n ? ' ' + (n + 1) : ''), x: 0, y: 0 };
+  // kort till vänster, delar i ett rutnät till höger så att de inte hamnar på varandra
+  const parts = circ.comps.filter(x => !isBoard(x)).length, brd = circ.comps.filter(isBoard).length;
+  if (BOARDS[type]) { c.x = 40 + brd * 30; c.y = 30 + brd * 30; } else { c.x = 320 + (parts % 3) * 180; c.y = 30 + Math.floor(parts / 3) % 4 * 150 + Math.floor(parts / 12) * 20; } circ.comps.push(c); selC = c.id; selW = null; changed(); }
+(() => { const cats = {}; for (const [k, d] of Object.entries(PARTS)) (cats[d.cat] = cats[d.cat] || []).push([k, d]);
+  put($('pal'), h('div', { class: 'palh' }, 'Styrkort'), Object.entries(BOARDS).map(([k, d]) => h('div', { class: 'pal', onclick: () => addComp(k) }, d.name, h('i', null, d.v + ' V'))),
+    Object.entries(cats).map(([c, list]) => [h('div', { class: 'palh' }, c), list.map(([k, d]) => h('div', { class: 'pal', onclick: () => addComp(k) }, d.name))])); })();
+let dragC = null;
+stage.addEventListener('pointerdown', e => {
+  const pin = e.target.closest('[data-p]'), wire = e.target.closest('[data-w]'), comp = e.target.closest('[data-c]');
+  if (pin) { const id = pin.dataset.p;
+    if (!pend) pend = id; else { if (pend !== id && !circ.wires.some(w => (w.a === pend && w.b === id) || (w.a === id && w.b === pend))) circ.wires.push({ a: pend, b: id }); pend = null; return changed(); }
+    return drawCirc(); }
+  pend = null;
+  if (wire) { selW = +wire.dataset.w; selC = null; return drawCirc(); }
+  if (comp) { const c = circ.comps.find(x => x.id === comp.dataset.c); selC = c.id; selW = null; dragC = { c, dx: e.clientX - c.x, dy: e.clientY - c.y }; stage.setPointerCapture(e.pointerId); return drawCirc(); }
+  selC = selW = null; drawCirc();
+});
+stage.addEventListener('pointermove', e => { if (!dragC) return; dragC.c.x = Math.max(0, Math.round((e.clientX - dragC.dx) / 10) * 10); dragC.c.y = Math.max(0, Math.round((e.clientY - dragC.dy) / 10) * 10); drawCirc(); });
+stage.addEventListener('pointerup', () => { if (dragC) { dragC = null; changed(); } });
+stage.addEventListener('dblclick', e => { const comp = e.target.closest('[data-c]'); if (!comp) return; const c = circ.comps.find(x => x.id === comp.dataset.c), n = prompt('Namn på delen:', c.label); if (n && n.trim()) { c.label = n.trim().slice(0, 30); changed(); } });
+addEventListener('keydown', e => { if ((e.key !== 'Delete' && e.key !== 'Backspace') || !$('vCirc').classList.contains('on') || /INPUT|TEXTAREA/.test(document.activeElement.tagName)) return;
+  if (selW != null) circ.wires.splice(selW, 1); else if (selC) { circ.comps = circ.comps.filter(c => c.id !== selC); circ.wires = circ.wires.filter(w => !w.a.startsWith(selC + '|') && !w.b.startsWith(selC + '|')); } else return;
+  selC = selW = null; e.preventDefault(); changed(); });
+$('bClearC').onclick = () => { if (circ.comps.length && confirm('Ta bort alla delar och sladdar i kretsen?')) { circ = { comps: [], wires: [] }; selC = selW = pend = null; changed(); } };
+// Kodskelett från kopplingen: en namngiven konstant per inkopplat stift
+$('bCode').onclick = tryIt(async () => {
+  const b = circ.comps.find(isBoard); if (!project) return toast('Skapa ett projekt först.'); if (!b) return toast('Lägg ut ett styrkort först.');
+  const N = nets(), d = defOf(b), rows = [];
+  for (const p of d.pins.filter(x => x.k === 'io')) for (const o of N.of(b.id + '|' + p.n).map(info)) if (!o.board && (o.p.r === 's' || o.p.r === 'o' || o.p.r === 'x'))
+    rows.push({ pin: p.n, name: (o.c.label + '_' + o.p.n).normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^A-Za-z0-9]+/g, '_').replace(/^_|_$/g, '').toUpperCase(), out: o.p.r === 's' || (o.p.r === 'x' && o.c.type !== 'btn'), btn: o.c.type === 'btn', what: o.label });
+  if (!rows.length) return toast('Inga delar är kopplade till kortets digitala stift än.');
+  const num = n => d === BOARDS.uno ? (n[0] === 'A' ? n : n.slice(1)) : n.replace(/\D/g, '');
+  const name = d.lang === 'py' ? 'krets.py' : 'krets/krets.ino';
+  const text = d.lang === 'py'
+    ? `# Skapad från kretsen i V.I.C.T.O.R. Labb för ${d.name} (MicroPython)\nfrom machine import Pin\n\n${rows.map(r => `${r.name} = Pin(${num(r.pin)}, ${r.out ? 'Pin.OUT' : r.btn ? 'Pin.IN, Pin.PULL_UP' : 'Pin.IN'})   # ${r.what}`).join('\n')}\n\nwhile True:\n    pass\n`
+    : `// Skapad från kretsen i V.I.C.T.O.R. Labb för ${d.name}\n${rows.map(r => `const int ${r.name} = ${num(r.pin)};   // ${r.what}`).join('\n')}\n\nvoid setup() {\n  Serial.begin(115200);\n${rows.map(r => `  pinMode(${r.name}, ${r.out ? 'OUTPUT' : r.btn ? 'INPUT_PULLUP' : 'INPUT'});`).join('\n')}\n}\n\nvoid loop() {\n}\n`;
+  if (projects.find(p => p.name === project).files.some(f => f.path === name) && !confirm(`${name} finns redan. Skriva över den?`)) return;
+  await call('POST', '/api/lab/file', { path: project + '/' + name, text }); await loadTree(); file = ''; document.querySelector('[data-v=vCode]').click(); await openFile(name);
+});
+
+// ------------------------------------------------------------------ start
+(async () => { try { await loadTree(); await loadTools(); await startTerm(); await loadCirc(); } catch (e) { toast(e.message); } })();
+</script>
+</body>
+</html>

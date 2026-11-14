@@ -271,6 +271,100 @@ async function installSteamcmd() {
   } finally { scInstall = null; }
 }
 
+// ------------------------------------------------------------------ labbet: kodprojekt, terminal, anslutningar
+const PROJ = path.join(DATA, 'projects');
+function labPath(rel) {   // allt i labbet håller sig inom projektmappen
+  const p = path.resolve(PROJ, String(rel || '').replace(/\0/g, ''));
+  if (p !== PROJ && !p.startsWith(PROJ + path.sep)) throw new Error('Ogiltig sökväg.');
+  return p;
+}
+function labTree() {
+  fs.mkdirSync(PROJ, { recursive: true });
+  let left = 1500;
+  const walk = (dir, rel) => fs.readdirSync(dir, { withFileTypes: true })
+    .filter(e => !e.name.startsWith('.') && e.name !== 'node_modules' && e.name !== '__pycache__')
+    .sort((a, b) => b.isDirectory() - a.isDirectory() || a.name.localeCompare(b.name))
+    .flatMap(e => { if (left-- <= 0) return [];
+      const r = rel ? rel + '/' + e.name : e.name;
+      return e.isDirectory() ? [{ path: r, dir: true }, ...walk(path.join(dir, e.name), r)] : e.isFile() ? [{ path: r }] : []; });
+  return fs.readdirSync(PROJ, { withFileTypes: true }).filter(e => e.isDirectory() && !e.name.startsWith('.'))
+    .map(e => ({ name: e.name, files: walk(path.join(PROJ, e.name), '') }));
+}
+// Kommandoterminal: ett skal med rörledningar (ingen riktig tty, så helskärmsprogram som vim fungerar inte).
+const terms = new Map();
+function termStart(project) {
+  const cwd = labPath(project); if (!fs.existsSync(cwd)) throw new Error('Projektet finns inte.');
+  if (terms.size >= 4) termKill(terms.keys().next().value);
+  const id = crypto.randomBytes(6).toString('hex');
+  const env = { ...process.env, TERM: 'dumb', PYTHONUTF8: '1', PYTHONIOENCODING: 'utf-8', PYTHONUNBUFFERED: '1' };   // rätt åäö och utskrift direkt från Python
+  const p = WIN ? spawn('cmd.exe', ['/Q', '/K', 'chcp 65001>nul'], { cwd, windowsHide: true, env })
+                : spawn('bash', ['--noprofile', '--norc'], { cwd, detached: true, env });
+  const t = { p, buf: '', subs: new Set(), alive: true };
+  const out = d => { const s = d.toString('utf8').replace(/\x1b\[[0-9;?]*[A-Za-z]/g, ''); t.buf = (t.buf + s).slice(-60000);
+    for (const r of t.subs) r.write(`data: ${JSON.stringify(s)}\n\n`); };
+  p.stdout.on('data', out); p.stderr.on('data', out); p.on('error', e => out('\n[' + e.message + ']\n'));
+  p.on('exit', () => { t.alive = false; out('\n[terminalen avslutades]\n'); for (const r of t.subs) r.end(); terms.delete(id); });
+  terms.set(id, t); return id;
+}
+function termKill(id) {
+  const t = terms.get(id); if (!t) return;
+  if (WIN) execFile('taskkill', ['/PID', String(t.p.pid), '/T', '/F'], { windowsHide: true }, () => {});
+  else try { process.kill(-t.p.pid, 'SIGKILL'); } catch { }
+}
+process.on('exit', () => { for (const id of terms.keys()) termKill(id); });
+let toolsCache = null;
+async function labTools() {   // vilka språk och verktyg som finns installerade på den här maskinen
+  if (toolsCache && Date.now() - toolsCache.at < 60000) return toolsCache.v;
+  const ver = async (cmd, args = ['--version']) => { const o = await run(cmd, args, { timeout: 6000, shell: WIN }); const m = o.match(/\d+\.\d+(\.\d+)?/); return o.trim() ? (m ? m[0] : 'finns') : null; };
+  const [py3, py, node, gpp, gcc, git, ard] = await Promise.all([ver('python3'), ver('python'), ver('node'), ver('g++'), ver('gcc'), ver('git'), ver('arduino-cli', ['version'])]);
+  const v = { python: py3 ? { cmd: 'python3', v: py3 } : py ? { cmd: 'python', v: py } : null, node: node && { cmd: 'node', v: node },
+    'g++': gpp && { cmd: 'g++', v: gpp }, gcc: gcc && { cmd: 'gcc', v: gcc }, git: git && { cmd: 'git', v: git }, 'arduino-cli': ard && { cmd: 'arduino-cli', v: ard } };
+  toolsCache = { at: Date.now(), v }; return v;
+}
+async function serialPorts() {   // inkopplade kort (Arduino, ESP32 …) syns som serieportar
+  if (WIN) return (await run('powershell', ['-NoProfile', '-Command',
+    "Get-CimInstance Win32_PnPEntity | Where-Object { $_.Name -match '\\(COM\\d+\\)' } | ForEach-Object { $_.Name }"])).split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+  const out = [];
+  try { for (const n of fs.readdirSync('/dev/serial/by-id')) out.push(n + ' → ' + path.basename(fs.realpathSync('/dev/serial/by-id/' + n))); } catch { }
+  if (!out.length) try { for (const n of fs.readdirSync('/dev')) if (/^tty(USB|ACM)\d+$/.test(n)) out.push('/dev/' + n); } catch { }
+  return out;
+}
+const tcpCheck = (host, port) => new Promise(res => {   // går det att ansluta till en enhet eller tjänst?
+  const t0 = Date.now(), s = require('net').connect({ host, port, timeout: 3000 });
+  const end = (ok, why) => { s.destroy(); res({ ok, why, ms: Date.now() - t0 }); };
+  s.on('connect', () => end(true, 'öppen')); s.on('timeout', () => end(false, 'inget svar'));
+  s.on('error', e => end(false, e.code === 'ECONNREFUSED' ? 'stängd (nekad)' : e.code === 'ENOTFOUND' ? 'okänd adress' : e.code || 'fel'));
+});
+async function labApi(req, res, url, m) {
+  const p = url.pathname, q = url.searchParams;
+  if (p === '/api/lab/tree' && m === 'GET') return send(res, 200, { projects: labTree(), root: PROJ });
+  if (p === '/api/lab/tools' && m === 'GET') return send(res, 200, { tools: await labTools(), serial: await serialPorts(), platform: WIN ? 'win' : 'linux' });
+  if (p === '/api/lab/file' && m === 'GET') {
+    const f = labPath(q.get('path')), st = fs.statSync(f);
+    if (st.size > 1 << 20) return send(res, 400, { error: 'Filen är för stor för redigeraren (över 1 MB).' });
+    const b = fs.readFileSync(f); if (b.includes(0)) return send(res, 400, { error: 'Filen är inte en textfil.' });
+    return send(res, 200, { text: b.toString('utf8') });
+  }
+  if (p === '/api/lab/term/stream' && m === 'GET') {
+    const t = terms.get(q.get('id')); if (!t) return send(res, 404, { error: 'Terminalen finns inte.' });
+    res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', 'X-Accel-Buffering': 'no' });
+    res.write(`data: ${JSON.stringify(t.buf)}\n\n`); t.subs.add(res); req.on('close', () => t.subs.delete(res)); return;
+  }
+  if (m !== 'POST') return send(res, 404, { error: 'Finns inte.' });
+  const b = await body(req, 2 << 20);
+  if (p === '/api/lab/file') { const f = labPath(b.path); if (f === PROJ) throw new Error('Ogiltig sökväg.');
+    fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, String(b.text == null ? '' : b.text)); return send(res, 200, { ok: true }); }
+  if (p === '/api/lab/project') { const n = clean(b.name, 40); if (!/^[\p{L}\p{N} _-]+$/u.test(n)) throw new Error('Namnet får bara innehålla bokstäver, siffror, mellanslag, - och _.');
+    const d = labPath(n); if (fs.existsSync(d)) throw new Error('Det finns redan ett projekt med det namnet.'); fs.mkdirSync(d, { recursive: true }); return send(res, 200, { ok: true }); }
+  if (p === '/api/lab/delete') { const f = labPath(b.path); if (f === PROJ) throw new Error('Ogiltig sökväg.'); fs.rmSync(f, { recursive: true, force: true }); return send(res, 200, { ok: true }); }
+  if (p === '/api/lab/term') return send(res, 200, { id: termStart(b.project) });
+  if (p === '/api/lab/term/input') { const t = terms.get(b.id); if (!t || !t.alive) return send(res, 404, { error: 'Terminalen är avslutad.' }); t.p.stdin.write(String(b.text).slice(0, 4000) + '\n'); return send(res, 200, { ok: true }); }
+  if (p === '/api/lab/term/kill') { termKill(b.id); return send(res, 200, { ok: true }); }
+  if (p === '/api/lab/check') { const host = clean(b.host, 120), port = portNum(b.port);
+    if (!/^[a-z0-9.:-]+$/i.test(host) || !port) throw new Error('Ange adress och port.'); return send(res, 200, await tcpCheck(host, port)); }
+  send(res, 404, { error: 'Finns inte.' });
+}
+
 // ------------------------------------------------------------------ inloggning
 const sessions = new Map();   // token → utgångstid
 let fails = 0, lockedUntil = 0;
@@ -285,7 +379,7 @@ function newSession(res) {
 // ------------------------------------------------------------------ http
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'application/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.png': 'image/png', '.json': 'application/json' };
 const send = (res, code, obj) => { res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(obj)); };
-const body = req => new Promise((ok, fail) => { let d = ''; req.on('data', c => { d += c; if (d.length > 65536) { fail(new Error('För stor förfrågan.')); req.destroy(); } });
+const body = (req, max = 65536) => new Promise((ok, fail) => { let d = ''; req.on('data', c => { d += c; if (d.length > max) { fail(new Error('För stor förfrågan.')); req.destroy(); } });
   req.on('end', () => { try { ok(d ? JSON.parse(d) : {}); } catch { fail(new Error('Ogiltig JSON.')); } }); });
 const clean = (v, max = 200) => String(v == null ? '' : v).replace(/[\r\n\0]/g, ' ').trim().slice(0, max);
 const portNum = v => { const n = +v | 0; return n > 0 && n < 65536 ? n : 0; };
@@ -322,6 +416,7 @@ async function api(req, res, url) {
   if (!authed(req)) return send(res, 401, { error: 'Inte inloggad.' });
   if (p === '/api/logout' && m === 'POST') { sessions.delete(cookieTok(req)); return send(res, 200, { ok: true }); }
   if (p === '/api/status' && m === 'GET') return send(res, 200, await status());
+  if (p.startsWith('/api/lab/')) return labApi(req, res, url, m);
   if (p === '/api/settings' && m === 'POST') {
     const b = await body(req);
     if (b.steamcmd != null) cfg.steamcmd = clean(b.steamcmd, 400);
