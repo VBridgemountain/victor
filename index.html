@@ -499,6 +499,7 @@ function orthonormalize() {
 rotate(-0.35, 0.5);
 
 let N = 0, P = null; // partikeldata
+let NC = 0, CL = null, cloudE = 0, cloudW = 0; // stoftmolnet i översikten
 function initParticles() {
   N = state.particles | 0;
   const f = () => new Float32Array(N);
@@ -523,6 +524,20 @@ function initParticles() {
     const a = Math.random() * TAU, b = Math.acos(2 * Math.random() - 1), d = 2.5 + Math.random() * 3;
     P.px[i] = Math.sin(b) * Math.cos(a) * d; P.py[i] = Math.sin(b) * Math.sin(a) * d; P.pz[i] = Math.cos(b) * d * 0.4;
     P.sx[i] = NaN;
+  }
+  // stoftmolnet i hjulets mitt (syns i översikten): tätast i kärnan, glesare utåt
+  NC = Math.round(clamp(N * 0.9, 900, 3000));
+  const h = () => new Float32Array(NC);
+  CL = { a: h(), r: h(), y: h(), ph: h(), sz: h(), br: h(), tw: h(), cg: new Uint8Array(NC), star: new Uint8Array(NC) };
+  for (let i = 0; i < NC; i++) {
+    const th = Math.random() * TAU, v = 2 * Math.random() - 1, hr = Math.sqrt(1 - v * v), r = Math.pow(Math.random(), 0.8) * 1.25;
+    CL.a[i] = th; CL.r[i] = r * hr; CL.y[i] = r * v * 0.62;
+    CL.ph[i] = Math.random() * TAU;
+    CL.sz[i] = 0.7 + Math.pow(Math.random(), 3) * 2.2;
+    CL.br[i] = (0.5 + Math.random() * 0.5) * (1 - 0.8 * Math.pow(Math.min(r / 1.25, 1), 2));
+    CL.tw[i] = 0.4 + Math.random() * 2.4;
+    const c = Math.random(); CL.cg[i] = c < 0.55 ? 0 : c < 0.85 ? 1 : 2;
+    CL.star[i] = Math.random() < 0.02 ? 1 : 0;
   }
 }
 
@@ -809,9 +824,9 @@ function frame(now) {
   } else {
     let dW = state.active - wheel; dW -= Math.round(dW / nG) * nG; wheel += dW * (1 - Math.pow(0.9, dt)); pendW = 0; wheelT = null;
   }
-  const rxW = lerp(Math.min(W * 0.46, mn * 0.85), ovRx()), tiltW = W <= 760 ? lerp(mn * 0.12, mn * 0.26) : lerp(mn * 0.34, mn * 0.2),   // telefon: flack, liggande ring i översikten
+  const rxW = lerp(Math.min(W * 0.46, mn * 0.85), ovRx()), tiltW = W <= 760 ? lerp(mn * 0.12, mn * 0.26) : lerp(mn * 0.34, mn * 0.4),   // telefon: flack, liggande ring i översikten
         liftW = W <= 760 ? lerp(mn * 0.62, 0) : 0,   // telefon: de andra globarna bildar en båge ovanför den aktiva
-        cyW = H / 2 + 12 + mn * (W <= 760 ? -0.12 : 0.06) * ov;   // telefon: ringen lite högre upp, ovanför snabbknapparna
+        cyW = H / 2 + 12 + mn * (W <= 760 ? -0.12 : 0.1) * ov;   // telefon: ringen lite högre upp, ovanför snabbknapparna
   const wheelPos = a => { const d = (1 - Math.cos(a)) / 2, s = 1 / (1 + d * lerp(1.1, 0.8));
     return { x: W / 2 + Math.sin(a) * rxW * s, y: cyW - d * tiltW - liftW * Math.min(1, d * 6), s, d }; };
   const pA = wheelPos((state.active - wheel) * TAU / nG);   // den aktiva globens plats på hjulet
@@ -916,6 +931,28 @@ function frame(now) {
       if (star[i]) { const d = (4 + sz[i] * 3.5) * sc * shrink; ctx.drawImage(sprite, sx[i] - d / 2, sy[i] - d / 2, d, d); }
       else if (s > 1.5) { ctx.beginPath(); ctx.arc(sx[i], sy[i], s / 2, 0, TAU); ctx.fill(); }
       else ctx.fillRect(sx[i] - s / 2, sy[i] - s / 2, s, s);
+    }
+  }
+  // översikt: ett stort stoftmoln i hjulets mitt som globarna kretsar kring; det vrids med hjulet och virvlar upp när man snurrar
+  if (ov > 0.02 && nG > 1) {
+    cloudE += (Math.min(Math.abs(wheel - cloudW) * 9, 1) - cloudE) * 0.07; cloudW = wheel;
+    const sm = W <= 760, RC = rxW * (sm ? 0.46 : 0.5), cAl = ov * (sm ? 0.5 : 1), cyC = cyW - tiltW * 0.5, tk = tiltW * 0.5 / (rxW * 0.71), wa = -wheel * TAU / nG,
+          puff = 1 + cloudE * 0.35, wob = 0.03 + cloudE * 0.12;
+    const cg2 = ctx.createRadialGradient(W / 2, cyC, 0, W / 2, cyC, RC * 1.1);
+    cg2.addColorStop(0, `rgba(${cr},${cg},${cb},${0.26 * cAl})`); cg2.addColorStop(0.5, `rgba(${cr},${cg},${cb},${0.09 * cAl})`); cg2.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.globalAlpha = 1; ctx.fillStyle = cg2; ctx.fillRect(W / 2 - RC * 1.1, cyC - RC * 1.1, RC * 2.2, RC * 2.2);
+    for (let gi = 0; gi < 3; gi++) {
+      ctx.fillStyle = pcols[gi];
+      for (let i = 0; i < NC; i += sm ? 3 : 1) {   // liten skärm: glesare och svagare, annars skymmer molnet globarna
+        if (CL.cg[i] !== gi) continue;
+        const p = CL.ph[i], r0 = CL.r[i], a = CL.a[i] + wa + T * 0.045 / (0.25 + r0),   // kärnan roterar fortare än ytterkanten
+              rr = r0 * puff * (1 + wob * Math.sin(T * 0.7 + p)), x = Math.sin(a) * rr, z = Math.cos(a) * rr,
+              y = CL.y[i] * puff + wob * Math.sin(T * 0.5 + p * 2.3), sc = 1 + z * 0.16,
+              X = W / 2 + x * RC * sc, Y = cyC + (y + z * tk) * RC * sc, s = CL.sz[i] * sc * (sm ? 0.8 : 1);
+        ctx.globalAlpha = cAl * CL.br[i] * (0.7 + 0.3 * Math.sin(T * CL.tw[i] + p * 3)) * (0.6 + 0.4 * (z + 1.2) / 2.4);
+        if (CL.star[i]) { const d = (4 + CL.sz[i] * 3.5) * sc; ctx.drawImage(sprite, X - d / 2, Y - d / 2, d, d); }
+        else ctx.fillRect(X - s / 2, Y - s / 2, s, s);
+      }
     }
   }
   ctx.fillStyle = col;
