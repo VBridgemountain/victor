@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#02060b">
+<title>V.I.C.T.O.R. Server — NoirLab</title>
+<style>
+:root{
+  --rgb:0,216,255; --accent:rgb(var(--rgb)); --bg:#02060b;
+  --text:color-mix(in srgb,var(--accent) 22%,#fff); --dim:color-mix(in srgb,var(--accent) 45%,#8a98a3);
+  --line:rgba(var(--rgb),.32); --panel:rgba(var(--rgb),.055);
+  --ok:#3dffa0; --wait:#ffc24d; --warn:#ff5a4d;
+  --mono:Consolas,"Cascadia Mono","SF Mono",Menlo,monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%}
+body{
+  background:radial-gradient(ellipse at 50% 45%,rgba(var(--rgb),.10),transparent 55%),radial-gradient(ellipse at 50% 120%,rgba(var(--rgb),.12),transparent 50%),var(--bg);
+  background-attachment:fixed;color:var(--text);font:14px/1.45 "Segoe UI",system-ui,-apple-system,sans-serif;overflow-x:hidden;
+}
+body::after{content:"";position:fixed;inset:0;pointer-events:none;z-index:40;
+  background:repeating-linear-gradient(0deg,rgba(255,255,255,.018) 0 1px,transparent 1px 3px)}
+button,input,textarea,select{font:inherit;color:inherit}
+#globe{position:absolute;left:0;top:0;width:100%;height:100vh;z-index:0;cursor:grab;touch-action:pan-y}
+#nodes{position:absolute;left:0;top:0;width:100%;height:100vh;z-index:1;pointer-events:none;overflow:hidden}
+.node{position:absolute;left:0;top:0;width:120px;margin-left:-60px;pointer-events:auto;cursor:pointer;background:none;border:0;padding:0;
+  display:flex;flex-direction:column;align-items:center;gap:5px;will-change:transform,opacity;--c:var(--dim)}
+.node .ico{width:52px;height:52px;margin-top:-26px;border-radius:50%;display:grid;place-items:center;font:600 15px var(--mono);color:var(--c);
+  background:radial-gradient(circle at 50% 35%,color-mix(in srgb,var(--c) 28%,transparent),rgba(2,6,11,.88) 70%);
+  border:1px solid var(--c);box-shadow:0 0 16px color-mix(in srgb,var(--c) 45%,transparent),inset 0 0 12px color-mix(in srgb,var(--c) 25%,transparent);transition:transform .2s}
+.node:hover .ico,.node:focus-visible .ico{transform:scale(1.12)} .node:focus-visible{outline:none}
+.node .lbl{font:11px var(--mono);letter-spacing:.12em;text-transform:uppercase;white-space:nowrap;text-shadow:0 0 8px rgba(var(--rgb),.9),0 0 2px #000;max-width:150px;overflow:hidden;text-overflow:ellipsis}
+.node .st{font:10px var(--mono);letter-spacing:.1em;color:var(--c);white-space:nowrap;text-shadow:0 0 2px #000}
+.online{--c:var(--ok)!important} .busy{--c:var(--wait)!important} .busy .ico{animation:pulse 1.2s ease-in-out infinite}
+@keyframes pulse{50%{opacity:.45}}
+#center{position:absolute;left:0;top:0;z-index:1;pointer-events:none;text-align:center;transform:translate(-50%,-50%);text-shadow:0 0 12px rgba(var(--rgb),.9),0 0 3px #000}
+#center b{display:block;font:600 20px/1.2 "Segoe UI",system-ui,sans-serif;color:#fff}
+#center span{font:11px var(--mono);letter-spacing:.14em;color:var(--dim);text-transform:uppercase}
+
+header{position:relative;z-index:5;display:flex;align-items:center;gap:10px;padding:14px 18px;flex-wrap:wrap}
+.brand{font:600 15px var(--mono);letter-spacing:.42em;color:var(--accent);text-shadow:0 0 12px rgba(var(--rgb),.7)}
+.brand small{display:block;font:10px var(--mono);letter-spacing:.3em;color:var(--dim);margin-top:2px}
+.sp{flex:1}
+.btn{background:var(--panel);border:1px solid var(--line);padding:7px 13px;cursor:pointer;font:11px var(--mono);letter-spacing:.14em;text-transform:uppercase;
+  clip-path:polygon(7px 0,100% 0,100% calc(100% - 7px),calc(100% - 7px) 100%,0 100%,0 7px);transition:background .2s,border-color .2s}
+.btn:hover,.btn:focus-visible{background:rgba(var(--rgb),.16);border-color:var(--accent);outline:none}
+.btn.pri{background:rgba(var(--rgb),.2);border-color:var(--accent)} .btn.red{border-color:var(--warn);color:var(--warn)}
+.btn:disabled{opacity:.35;cursor:default}
+main{position:relative;z-index:2;display:grid;grid-template-columns:330px 1fr 360px;gap:14px;padding:0 18px 18px;pointer-events:none;min-height:calc(100vh - 70px)}
+.col{display:flex;flex-direction:column;gap:14px;pointer-events:none} .col>*{pointer-events:auto}
+.w{background:rgba(2,8,14,.78);border:1px solid var(--line);backdrop-filter:blur(6px);
+  clip-path:polygon(10px 0,100% 0,100% calc(100% - 10px),calc(100% - 10px) 100%,0 100%,0 10px)}
+.w h2{margin:0;padding:8px 12px;font:11px var(--mono);letter-spacing:.2em;text-transform:uppercase;color:var(--accent);border-bottom:1px solid var(--line);background:var(--panel);display:flex;gap:8px;align-items:center}
+.w h2 i{font-style:normal;color:var(--dim);margin-left:auto;letter-spacing:.08em}
+.wb{padding:11px 12px}
+.kv{display:flex;justify-content:space-between;gap:10px;font:12px var(--mono);padding:2px 0} .kv span:first-child{color:var(--dim);letter-spacing:.08em;text-transform:uppercase;font-size:11px;white-space:nowrap}
+.kv span:last-child{text-align:right;overflow-wrap:anywhere;user-select:text}
+.bar{height:5px;background:rgba(var(--rgb),.12);margin:3px 0 9px} .bar i{display:block;height:100%;background:var(--accent);box-shadow:0 0 8px var(--accent);transition:width .6s}
+.big{font:600 22px var(--mono);color:#fff;user-select:text} .big small{font:11px var(--mono);color:var(--dim);letter-spacing:.1em}
+.rates{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:8px 0 6px} .rates div span{display:block;font:10px var(--mono);letter-spacing:.14em;color:var(--dim)}
+.rates b{font:600 17px var(--mono)} .up b{color:var(--wait)} .down b{color:var(--accent)}
+#spark{width:100%;height:64px;display:block}
+.note{font-size:12px;color:var(--dim);line-height:1.4;margin:8px 0 0}
+.srv{display:flex;align-items:center;gap:10px;padding:9px 12px;border-bottom:1px solid rgba(var(--rgb),.14);cursor:pointer;--c:var(--dim)}
+.srv:last-child{border-bottom:0} .srv:hover{background:var(--panel)}
+.dot{width:9px;height:9px;border-radius:50%;background:var(--c);box-shadow:0 0 8px var(--c);flex:none}
+.srv .nm{flex:1;min-width:0} .srv .nm b{display:block;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.srv .nm span{font:11px var(--mono);color:var(--c);letter-spacing:.06em}
+.mini{background:none;border:1px solid var(--line);padding:4px 9px;cursor:pointer;font:10px var(--mono);letter-spacing:.12em;text-transform:uppercase}
+.mini:hover{border-color:var(--accent);background:var(--panel)}
+.tag{font:10px var(--mono);letter-spacing:.1em;border:1px solid var(--wait);color:var(--wait);padding:1px 6px;white-space:nowrap}
+.ports{max-height:300px;overflow:auto} table{width:100%;border-collapse:collapse;font:12px var(--mono)}
+th{position:sticky;top:0;background:#04101a;text-align:left;font-weight:400;color:var(--dim);font-size:10px;letter-spacing:.14em;text-transform:uppercase;padding:6px 12px}
+td{padding:4px 12px;border-top:1px solid rgba(var(--rgb),.1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:150px}
+tr.game td{color:var(--ok)} td.loc{color:var(--dim)}
+.empty{padding:16px 12px;color:var(--dim);font-size:13px}
+
+#veil{position:fixed;inset:0;z-index:30;background:rgba(1,4,8,.72);backdrop-filter:blur(3px);display:none;align-items:center;justify-content:center;padding:16px}
+#veil.on{display:flex}
+.modal{width:min(620px,100%);max-height:calc(100vh - 32px);overflow:auto;background:rgba(2,8,14,.96);border:1px solid var(--accent);box-shadow:0 0 40px rgba(var(--rgb),.25)}
+.modal h3{margin:0;padding:11px 14px;font:12px var(--mono);letter-spacing:.2em;text-transform:uppercase;color:var(--accent);border-bottom:1px solid var(--line);background:var(--panel);display:flex}
+.modal h3 button{margin-left:auto;background:none;border:0;cursor:pointer;font-size:16px;line-height:1;color:var(--dim)}
+.mb{padding:14px} .mb p{margin:0 0 10px}
+label{display:block;font:10px var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--dim);margin:10px 0 4px}
+.in{width:100%;background:rgba(var(--rgb),.06);border:1px solid var(--line);padding:8px 10px;outline:none;font-size:14px}
+.in:focus{border-color:var(--accent)} textarea.in{resize:vertical;font:12px/1.45 var(--mono)} select.in option{background:#04101a}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px} .two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.log{margin:10px 0 0;padding:10px;background:#010409;border:1px solid var(--line);font:11px/1.45 var(--mono);height:230px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;user-select:text;color:#b9d6e2}
+.err{color:var(--warn);font-size:13px;min-height:18px;margin-top:8px}
+#toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:50;background:rgba(2,8,14,.95);border:1px solid var(--warn);color:#fff;padding:9px 16px;font-size:13px;display:none;max-width:calc(100vw - 30px)}
+
+@media (max-width:980px){
+  #globe,#nodes{height:56vh}
+  main{grid-template-columns:1fr;padding:0 12px 16px;margin-top:calc(56vh - 62px);min-height:0}
+  main>.mid{display:none} header{padding:12px}
+  .brand{letter-spacing:.3em}
+}
+</style>
+</head>
+<body>
+<canvas id="globe"></canvas>
+<div id="nodes"></div>
+<div id="center"><b id="cHost"></b><span id="cSub"></span></div>
+
+<header>
+  <div class="brand">V.I.C.T.O.R. SERVER<small>BY NOIRLAB</small></div>
+  <div class="sp"></div>
+  <button class="btn pri" id="bAdd">+ Spelserver</button>
+  <button class="btn" id="bSet">Inställningar</button>
+  <button class="btn" id="bOut">Logga ut</button>
+</header>
+
+<main>
+  <div class="col">
+    <section class="w"><h2>System <i id="sysOs"></i></h2><div class="wb" id="sys"></div></section>
+    <section class="w"><h2>Nätverk</h2><div class="wb" id="net"></div></section>
+  </div>
+  <div class="mid"></div>
+  <div class="col">
+    <section class="w"><h2>Spelservrar <i id="srvCount"></i></h2><div id="srvs"></div></section>
+    <section class="w"><h2>Lyssnande portar <i id="portCount"></i></h2><div class="ports" id="ports"></div>
+      <div class="wb" style="padding-top:0"><p class="note">Portar som den här maskinen tar emot anslutningar på. Om de nås från internet avgörs av routerns portöppning och brandväggen.</p></div></section>
+  </div>
+</main>
+
+<div id="veil"></div>
+<div id="toast"></div>
+
+<script>
+'use strict';
+const $ = id => document.getElementById(id), TAU = Math.PI * 2, clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+// h('div', {class:'x', onclick:f}, 'text', nod …): all text sätts som text, aldrig som HTML
+function h(tag, props, ...kids) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(props || {})) { if (k.startsWith('on')) e.addEventListener(k.slice(2), v); else if (k === 'class') e.className = v; else if (v !== false && v != null) e.setAttribute(k, v === true ? '' : v); }
+  for (const k of kids.flat(Infinity)) if (k != null && k !== false) e.append(k.nodeType ? k : String(k));
+  return e;
+}
+const fmtB = n => { if (n == null) return '–'; const u = ['B', 'kB', 'MB', 'GB', 'TB']; let i = 0; while (n >= 1000 && i < 4) { n /= 1000; i++; } return (i ? n.toFixed(n < 10 ? 2 : n < 100 ? 1 : 0) : n) + ' ' + u[i]; };
+const fmtRate = bytes => { let b = bytes * 8; const u = ['bit/s', 'kbit/s', 'Mbit/s', 'Gbit/s']; let i = 0; while (b >= 1000 && i < 3) { b /= 1000; i++; } return [i ? b.toFixed(b < 10 ? 2 : b < 100 ? 1 : 0) : Math.round(b), u[i]]; };
+const fmtDur = s => { s = Math.floor(s); const d = Math.floor(s / 86400), hh = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60); return d ? `${d} d ${hh} h` : hh ? `${hh} h ${m} min` : `${m} min`; };
+// byter innehållet i ett element; tål listor och tomma värden precis som h()
+// bygger bara om när innehållet faktiskt ändrats, så att knappar inte byts ut mitt i ett klick
+const changed = (el, key) => { if (el._key === key) return false; el._key = key; return true; };
+const put = (el, ...kids) => el.replaceChildren(...h('div', null, kids).childNodes);
+function toast(t) { const e = $('toast'); e.textContent = t; e.style.display = 'block'; clearTimeout(toast.t); toast.t = setTimeout(() => e.style.display = 'none', 5000); }
+
+async function call(method, url, data) {
+  const r = await fetch(url, { method, headers: data ? { 'Content-Type': 'application/json' } : (method === 'GET' ? {} : { 'Content-Type': 'application/json' }), body: method === 'GET' ? undefined : JSON.stringify(data || {}) });
+  const j = await r.json().catch(() => ({}));
+  if (r.status === 401 && url !== '/api/login') { showLogin(); throw new Error(j.error || 'Inte inloggad.'); }
+  if (!r.ok) throw new Error(j.error || 'Något gick fel.');
+  return j;
+}
+const act = (method, url, data) => call(method, url, data).then(j => { poll(); return j; }).catch(e => { toast(e.message); throw e; });
+
+// ------------------------------------------------------------------ modal
+const veil = $('veil'); let modalTimer = 0;
+function closeModal() { veil.classList.remove('on'); veil.replaceChildren(); clearInterval(modalTimer); openId = null; }
+function modal(title, body, closable = true) {
+  clearInterval(modalTimer);
+  veil.replaceChildren(h('div', { class: 'modal' }, h('h3', null, title, closable && h('button', { onclick: closeModal, 'aria-label': 'Stäng' }, '✕')), h('div', { class: 'mb' }, body)));
+  veil.classList.add('on'); veil.onclick = e => { if (closable && e.target === veil) closeModal(); };
+  const f = veil.querySelector('input,select,textarea'); if (f) f.focus();
+}
+addEventListener('keydown', e => { if (e.key === 'Escape' && veil.classList.contains('on') && loggedIn) closeModal(); });
+
+// ------------------------------------------------------------------ inloggning
+let loggedIn = false;
+async function showLogin() {
+  loggedIn = false;
+  const s = await fetch('/api/session').then(r => r.json()).catch(() => null);
+  if (!s) return modal('Ingen kontakt', h('p', null, 'Agenten på servern svarar inte.'), false);
+  if (s.authed) { loggedIn = true; closeModal(); return poll(); }
+  const pw = h('input', { class: 'in', type: 'password', autocomplete: s.setup ? 'new-password' : 'current-password' }), err = h('div', { class: 'err' });
+  const go = async e => { e.preventDefault(); err.textContent = '';
+    try { await call('POST', s.setup ? '/api/setup' : '/api/login', { password: pw.value }); loggedIn = true; closeModal(); poll(); } catch (x) { err.textContent = x.message; } };
+  modal(s.setup ? 'Välj lösenord' : 'Logga in', h('form', { onsubmit: go },
+    h('p', null, s.setup ? 'Första start: välj lösenordet som skyddar panelen (minst 8 tecken). Den som loggar in kan starta program på servern.' : 'Ange lösenordet till serverpanelen.'),
+    s.setup && !s.local && h('p', { class: 'note' }, 'Det första lösenordet måste väljas på servern själv, via http://localhost:8787, eller med kommandot node server.js --set-password.'),
+    h('label', null, 'Lösenord'), pw, err, h('div', { class: 'row' }, h('button', { class: 'btn pri' }, s.setup ? 'Spara' : 'Logga in'))), false);
+}
+$('bOut').onclick = () => call('POST', '/api/logout').catch(() => {}).then(showLogin);
+
+// ------------------------------------------------------------------ data
+let S = null, openId = null;
+async function poll() {
+  if (!loggedIn) return;
+  try { S = await call('GET', '/api/status'); render(); } catch { /* visas av showLogin eller nästa försök */ }
+}
+setInterval(poll, 2500);
+
+const stateOf = s => s.job === 'update' ? ['busy', 'Installerar / uppdaterar …'] : s.job === 'check' ? ['busy', 'Söker uppdatering …']
+  : s.stopping ? ['busy', 'Stoppar …'] : s.online ? ['online', `Online · ${s.query.players}/${s.query.max} spelare`]
+  : s.running ? (s.queryPort ? ['busy', 'Startar · svarar inte än'] : ['online', 'Igång']) : !s.ready ? ['', 'Inte installerad'] : ['', 'Stoppad'];
+
+function render() {
+  const s = S; if (!s) return;
+  $('cHost').textContent = s.host; $('sysOs').textContent = s.platform === 'win' ? 'Windows' : 'Linux';
+  const on = s.servers.filter(x => x.running).length;
+  $('cSub').textContent = s.servers.length ? `${on} av ${s.servers.length} servrar igång` : 'inga spelservrar än';
+  const used = s.mem.total - s.mem.free, bar = p => h('div', { class: 'bar' }, h('i', { style: `width:${clamp(p, 0, 100)}%` }));
+  put($('sys'),
+    h('div', { class: 'kv' }, h('span', null, `Processor · ${s.cores} kärnor`), h('span', null, s.cpu + ' %')), bar(s.cpu),
+    h('div', { class: 'kv' }, h('span', null, 'Minne'), h('span', null, `${fmtB(used)} av ${fmtB(s.mem.total)}`)), bar(used / s.mem.total * 100),
+    s.disk && h('div', { class: 'kv' }, h('span', null, 'Disk (spelmappen)'), h('span', null, `${fmtB(s.disk.free)} ledigt`)), s.disk && bar((1 - s.disk.free / s.disk.total) * 100),
+    h('div', { class: 'kv' }, h('span', null, 'Igång sedan'), h('span', null, fmtDur(s.uptime))),
+    h('div', { class: 'kv' }, h('span', null, 'System'), h('span', null, s.os)));
+  const up = fmtRate(s.net.txRate), dn = fmtRate(s.net.rxRate);
+  put($('net'),
+    h('div', { class: 'kv' }, h('span', null, 'Publik IP')), h('div', { class: 'big' }, s.net.publicIp || 'okänd'),
+    s.net.local.map(a => h('div', { class: 'kv' }, h('span', null, a.name), h('span', null, a.ip))),
+    h('div', { class: 'rates' },
+      h('div', { class: 'up' }, h('span', null, '▲ SKICKAR UT'), h('b', null, up[0]), ' ', h('small', null, up[1])),
+      h('div', { class: 'down' }, h('span', null, '▼ TAR EMOT'), h('b', null, dn[0]), ' ', h('small', null, dn[1]))),
+    h('canvas', { id: 'spark' }),
+    h('div', { class: 'kv' }, h('span', null, 'Skickat'), h('span', null, fmtB(s.net.tx))),
+    h('div', { class: 'kv' }, h('span', null, 'Mottaget'), h('span', null, fmtB(s.net.rx))),
+    h('p', { class: 'note' }, 'Summorna räknas från att agenten startades, för ' + fmtDur((Date.now() - s.net.since) / 1000) + ' sedan.'));
+  drawSpark(s.net.hist);
+
+  $('srvCount').textContent = s.servers.length || '';
+  if (changed($('srvs'), JSON.stringify(s.servers.map(x => [x.name, stateOf(x), x.updateAvailable, x.ready])))) put($('srvs'), (s.servers.length ? s.servers.map(x => { const [c, t] = stateOf(x);
+    return h('div', { class: 'srv ' + c, onclick: () => openServer(x.id) }, h('span', { class: 'dot' }),
+      h('div', { class: 'nm' }, h('b', null, x.name), h('span', null, t)),
+      x.updateAvailable && h('span', { class: 'tag' }, 'UPPDATERING'),
+      !x.job && !x.stopping && x.ready && h('button', { class: 'mini', onclick: e => { e.stopPropagation(); act('POST', `/api/servers/${x.id}/${x.running ? 'stop' : 'start'}`); } }, x.running ? 'Stoppa' : 'Starta')); })
+    : [h('div', { class: 'empty' }, 'Inga spelservrar än. Tryck på + Spelserver för att lägga till en.')]));
+
+  const gp = new Set(s.servers.flatMap(x => [x.port, x.queryPort]).filter(Boolean));
+  $('portCount').textContent = s.ports.length || '';
+  if (changed($('ports'), JSON.stringify([s.ports, [...gp]]))) put($('ports'),s.ports.length ? h('table', null, h('tr', null, ['Port', 'Typ', 'Program', 'Nås från'].map(t => h('th', null, t))),
+    s.ports.map(p => h('tr', { class: gp.has(p.port) ? 'game' : '' }, h('td', null, p.port), h('td', null, p.proto), h('td', { title: p.name }, p.name || '–'),
+      h('td', { class: p.local ? 'loc' : '' }, p.local ? 'bara lokalt' : 'nätverket'))))
+    : h('div', { class: 'empty' }, 'Läser portar …'));
+  syncNodes();
+  if (openId && !editing) { const x = s.servers.find(v => v.id === openId); if (x) fillServer(x); }
+}
+function drawSpark(hist) {
+  const c = $('spark'); if (!c) return; const d = devicePixelRatio || 1, w = c.clientWidth, hh = c.clientHeight;
+  c.width = w * d; c.height = hh * d; const x = c.getContext('2d'); x.scale(d, d);
+  const max = Math.max(1, ...hist.flat()), cs = getComputedStyle(document.body);
+  [[1, cs.getPropertyValue('--wait')], [0, `rgb(${cs.getPropertyValue('--rgb')})`]].forEach(([k, col]) => {
+    x.beginPath(); hist.forEach((v, i) => { const X = i / 89 * w, Y = hh - 3 - v[k] / max * (hh - 8); i ? x.lineTo(X, Y) : x.moveTo(X, Y); });
+    x.strokeStyle = col; x.lineWidth = 1.4; x.stroke();
+  });
+}
+
+// ------------------------------------------------------------------ en spelserver
+let editing = false, logKind = 'game', srvBox = null;
+function openServer(id) {
+  openId = id; editing = false; logKind = 'game';
+  srvBox = { head: h('div'), log: h('pre', { class: 'log' }) };
+  modal('Spelserver', [srvBox.head, srvBox.log]);
+  const x = S.servers.find(v => v.id === id); if (x) fillServer(x);
+  loadLog(); modalTimer = setInterval(loadLog, 2500);
+}
+async function loadLog() {
+  if (!openId || editing) return;
+  try { const j = await call('GET', `/api/servers/${openId}/log?kind=${logKind}`), e = srvBox.log, bottom = e.scrollTop + e.clientHeight >= e.scrollHeight - 30;
+    e.textContent = j.text || (logKind === 'game' ? 'Ingen utskrift från servern än.' : 'SteamCMD har inte körts för den här servern än.'); if (bottom) e.scrollTop = e.scrollHeight; } catch { }
+}
+function fillServer(x) {
+  const [c, t] = stateOf(x), busy = !!x.job || x.stopping, P = (a) => act('POST', `/api/servers/${x.id}/${a}`);
+  if (x.job && logKind !== 'steam') logKind = 'steam';
+  if (!changed(srvBox.head, JSON.stringify([x, logKind, S.net.publicIp, S.steamcmd.path, x.running && Math.floor((Date.now() - x.startedAt) / 60000)]))) return;
+  put(srvBox.head,
+    h('div', { class: 'srv ' + c, style: 'padding:0 0 10px;cursor:default;border:0' }, h('span', { class: 'dot' }), h('div', { class: 'nm' }, h('b', { style: 'font-size:17px' }, x.name), h('span', null, t))),
+    x.query && h('div', { class: 'kv' }, h('span', null, 'Visas som'), h('span', null, `${x.query.name}${x.query.map ? ' · ' + x.query.map : ''}`)),
+    h('div', { class: 'kv' }, h('span', null, 'Steam app-ID'), h('span', null, x.appId)),
+    h('div', { class: 'kv' }, h('span', null, 'Port'), h('span', null, x.port || '–', x.queryPort && x.queryPort !== x.port ? ` (förfrågan ${x.queryPort})` : '')),
+    S.net.publicIp && x.port ? h('div', { class: 'kv' }, h('span', null, 'Adress utifrån'), h('span', null, `${S.net.publicIp}:${x.port}`)) : null,
+    h('div', { class: 'kv' }, h('span', null, 'Installerad version'), h('span', null, x.installed ? 'build ' + x.installed : x.ready ? 'okänd (inte hämtad via SteamCMD)' : 'inte installerad')),
+    h('div', { class: 'kv' }, h('span', null, 'Senaste hos Steam'), h('span', { style: x.updateAvailable ? 'color:var(--wait)' : '' },
+      x.latest ? 'build ' + x.latest + (x.updateAvailable ? ' · uppdatering finns' : x.installed ? ' · aktuell' : '') : 'inte kontrollerat')),
+    h('div', { class: 'kv' }, h('span', null, 'Mapp'), h('span', null, x.dir)),
+    x.running && h('div', { class: 'kv' }, h('span', null, 'Igång sedan'), h('span', null, fmtDur((Date.now() - x.startedAt) / 1000) + ' · pid ' + x.pid)),
+    x.online && h('label', null, `Anslutna spelare · ${x.query.players} av ${x.query.max}`),
+    x.online && (x.players && x.players.length
+      ? h('div', { class: 'ports', style: 'max-height:170px;border:1px solid var(--line)' }, h('table', null, h('tr', null, ['Spelare', 'Poäng', 'Ansluten'].map(t => h('th', null, t))),
+          [...x.players].sort((a, b) => b.secs - a.secs).map(p => h('tr', null, h('td', { style: 'max-width:260px' }, p.name || '(ansluter …)'), h('td', null, p.score), h('td', null, fmtDur(p.secs))))))
+      : h('p', { class: 'note', style: 'margin-top:0' }, x.players ? 'Ingen är ansluten just nu.' : 'Spelet lämnar inte ut någon spelarlista.')),
+    x.jobText && !x.job && h('div', { class: 'err' }, x.jobText),
+    h('div', { class: 'row' },
+      x.running ? h('button', { class: 'btn red', disabled: busy, onclick: () => P('stop') }, 'Stoppa') : h('button', { class: 'btn pri', disabled: busy || !x.ready, onclick: () => { logKind = 'game'; P('start'); } }, 'Starta'),
+      h('button', { class: 'btn', disabled: busy || x.running, onclick: () => { logKind = 'steam'; P('update'); } }, x.installed ? 'Uppdatera' : 'Installera'),
+      h('button', { class: 'btn', disabled: busy, onclick: () => { logKind = 'steam'; P('check'); } }, 'Sök uppdatering'),
+      h('button', { class: 'btn', onclick: () => editServer(x) }, 'Ändra'),
+      h('button', { class: 'btn', onclick: () => { logKind = logKind === 'game' ? 'steam' : 'game'; fillServer(x); loadLog(); } }, logKind === 'game' ? 'Visa SteamCMD-logg' : 'Visa serverlogg')),
+    !S.steamcmd.path && h('p', { class: 'note' }, 'SteamCMD är inte installerat än. Installera det under Inställningar för att kunna hämta spelservern.'),
+    h('label', null, logKind === 'game' ? 'Serverns utskrift' : 'SteamCMD'));
+}
+function editServer(x) {
+  editing = true; clearInterval(modalTimer);
+  const isNew = !x, win = S.platform === 'win', f = {
+    tpl: h('select', { class: 'in' }, h('option', { value: '' }, 'Eget spel (ange app-ID själv)'), S.templates.map(t => h('option', { value: t.key }, t.name))),
+    name: h('input', { class: 'in', maxlength: 60 }), appId: h('input', { class: 'in', inputmode: 'numeric' }),
+    cmd: h('textarea', { class: 'in', rows: 3, spellcheck: 'false' }), port: h('input', { class: 'in', inputmode: 'numeric' }),
+    queryPort: h('input', { class: 'in', inputmode: 'numeric' }), dir: h('input', { class: 'in', placeholder: 'tom = ' + S.serversDir }) }, err = h('div', { class: 'err' });
+  if (x) { f.name.value = x.name; f.appId.value = x.appId; f.cmd.value = x.cmd; f.port.value = x.port || ''; f.queryPort.value = x.queryPort || ''; }
+  f.tpl.onchange = () => { const t = S.templates.find(v => v.key === f.tpl.value); if (!t) return;
+    f.name.value = t.name; f.appId.value = t.appId; f.cmd.value = win ? t.win : t.linux; f.port.value = t.port; f.queryPort.value = t.queryPort || ''; };
+  const go = async e => { e.preventDefault(); err.textContent = '';
+    try { const j = await call('POST', '/api/servers', { id: x && x.id, name: f.name.value, appId: f.appId.value, cmd: f.cmd.value, port: f.port.value, queryPort: f.queryPort.value, dir: isNew ? f.dir.value : undefined });
+      await poll(); openServer(j.id); } catch (v) { err.textContent = v.message; } };
+  modal(isNew ? 'Ny spelserver' : 'Ändra spelserver', h('form', { onsubmit: go },
+    isNew && [h('label', null, 'Mall'), f.tpl],
+    h('label', null, 'Namn'), f.name,
+    h('label', null, 'Steam app-ID (den dedikerade serverns ID)'), f.appId,
+    h('label', null, 'Startkommando (körs i spelets mapp)'), f.cmd,
+    h('p', { class: 'note' }, 'Mallarnas kommandon är startförslag. Byt servernamn och lösenord i kommandot innan du startar.'),
+    h('div', { class: 'two' }, h('div', null, h('label', null, 'Spelport'), f.port), h('div', null, h('label', null, 'Port för statusförfrågan'), f.queryPort)),
+    h('p', { class: 'note' }, 'Statusförfrågan (Steams A2S) visar om servern är online och hur många som spelar. Lämna tom om spelet saknar stöd.'),
+    isNew && [h('label', null, 'Mapp (valfritt)'), f.dir],
+    err, h('div', { class: 'row' }, h('button', { class: 'btn pri' }, 'Spara'),
+      !isNew && h('button', { class: 'btn red', type: 'button', onclick: async () => {
+        if (!confirm(`Ta bort "${x.name}" ur panelen?\nSpelfilerna i ${x.dir} ligger kvar på disken.`)) return;
+        try { await act('DELETE', `/api/servers/${x.id}`); closeModal(); } catch { } } }, 'Ta bort ur panelen'))));
+}
+$('bAdd').onclick = () => S && editServer(null);
+
+$('bSet').onclick = () => {
+  if (!S) return; editing = true;
+  const sc = h('input', { class: 'in', placeholder: 'sökväg till steamcmd' + (S.platform === 'win' ? '.exe' : '.sh') }), dir = h('input', { class: 'in' }), err = h('div', { class: 'err' });
+  dir.value = S.serversDir;
+  modal('Inställningar', h('div', null,
+    h('label', null, 'SteamCMD'),
+    h('p', null, S.steamcmd.installing ? S.steamcmd.installing : S.steamcmd.path ? 'Installerat: ' + S.steamcmd.path : 'Inte installerat. SteamCMD är Valves verktyg för att hämta och uppdatera spelservrar.'),
+    S.steamcmd.error && h('div', { class: 'err' }, S.steamcmd.error),
+    !S.steamcmd.path && h('div', { class: 'row', style: 'margin-top:0' }, h('button', { class: 'btn pri', disabled: !!S.steamcmd.installing, onclick: async () => {
+      try { await act('POST', '/api/steamcmd/install'); toast('Hämtar SteamCMD från Valve …'); closeModal(); } catch { } } }, 'Hämta och installera SteamCMD')),
+    h('label', null, 'Eller egen sökväg till SteamCMD'), sc,
+    h('label', null, 'Mapp där spelservrar installeras'), dir,
+    h('p', { class: 'note' }, 'Panelen går över vanlig HTTP. Använd den i hemnätet eller över VPN (t.ex. Tailscale eller WireGuard), och öppna inte port 8787 i routern mot internet.'),
+    err, h('div', { class: 'row' }, h('button', { class: 'btn pri', onclick: async () => {
+      try { await call('POST', '/api/settings', { steamcmd: sc.value || undefined, serversDir: dir.value }); closeModal(); poll(); } catch (v) { err.textContent = v.message; } } }, 'Spara'))));
+};
+
+// ------------------------------------------------------------------ globen: servern som ett stoftklot, spelservrarna i omlopp
+const cv = $('globe'), ctx = cv.getContext('2d'), nodesEl = $('nodes'), N = innerWidth < 760 ? 1500 : 2600;
+let W = 0, H = 0, CX = 0, CY = 0, R = 0, T = 0, rotY = 0.4, rotX = -0.32, vel = 0.002, energy = 0, drag = null, orbit = 0;
+const P = { x: new Float32Array(N), y: new Float32Array(N), z: new Float32Array(N), rf: new Float32Array(N), ph: new Float32Array(N), sz: new Float32Array(N), br: new Float32Array(N), tw: new Float32Array(N), cg: new Uint8Array(N) };
+for (let i = 0, g = Math.PI * (3 - Math.sqrt(5)); i < N; i++) {
+  const y = 1 - (i + 0.5) * 2 / N, r = Math.sqrt(1 - y * y), u = Math.random();
+  P.x[i] = Math.cos(i * g) * r; P.y[i] = y; P.z[i] = Math.sin(i * g) * r;
+  P.rf[i] = u < 0.74 ? 1 + (Math.random() + Math.random() - 1) * 0.08 : u < 0.92 ? 1.05 + Math.random() ** 2 * 0.55 : 0.25 + Math.random() * 0.65;
+  P.ph[i] = Math.random() * TAU; P.sz[i] = 0.6 + Math.random() ** 3 * 1.8; P.br[i] = 0.5 + Math.random() * 0.5; P.tw[i] = 0.5 + Math.random() * 2.6;
+  const c = Math.random(); P.cg[i] = c < 0.6 ? 0 : c < 0.86 ? 1 : 2;
+}
+function resize() {
+  const d = Math.min(devicePixelRatio || 1, 2), b = cv.getBoundingClientRect();
+  W = b.width; H = b.height; cv.width = W * d; cv.height = H * d; ctx.setTransform(d, 0, 0, d, 0, 0);
+  const small = innerWidth <= 980;
+  CX = W / 2 + (small ? 0 : -15); CY = small ? H * 0.5 + 20 : H / 2 + 20;
+  R = small ? Math.min(W * 0.27, H * 0.3) : Math.min((W - 720) * 0.27, H * 0.24);
+  R = Math.max(R, 70);
+  const c = $('center'); c.style.left = CX + 'px'; c.style.top = CY + 'px';
+}
+addEventListener('resize', resize); resize();
+cv.addEventListener('pointerdown', e => { drag = { x: e.clientX }; });
+addEventListener('pointermove', e => { if (!drag) return; const dx = e.clientX - drag.x; drag.x = e.clientX; vel = dx * 0.006; rotY += vel; orbit += vel * 0.6; });
+addEventListener('pointerup', () => drag = null); addEventListener('pointercancel', () => drag = null);
+
+const nodes = new Map();
+function syncNodes() {
+  const ids = new Set(S.servers.map(s => s.id));
+  for (const [id, n] of nodes) if (!ids.has(id)) { n.el.remove(); nodes.delete(id); }
+  S.servers.forEach((s, i) => {
+    let n = nodes.get(s.id);
+    if (!n) { n = { ico: h('div', { class: 'ico' }), lbl: h('div', { class: 'lbl' }), st: h('div', { class: 'st' }) };
+      n.el = h('button', { class: 'node', onclick: () => openServer(s.id) }, n.ico, n.lbl, n.st); nodesEl.append(n.el); nodes.set(s.id, n); }
+    const [c, t] = stateOf(s); n.i = i; n.el.className = 'node ' + c; n.lbl.textContent = s.name; n.st.textContent = s.online ? `${s.query.players}/${s.query.max} online` : t.split(' · ')[0];
+    n.ico.textContent = s.name.replace(/[^\p{L}\p{N} ]/gu, '').split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase();
+  });
+}
+let last = performance.now();
+function frame(now) {
+  const dt = clamp((now - last) / 16.67, 0.2, 3); last = now; T += 0.016 * dt;
+  if (!drag) { rotY += vel * dt; vel += (0.0018 - vel) * 0.03 * dt; orbit += 0.0012 * dt; }
+  energy += (Math.abs(vel) - energy) * 0.08;
+  const load = S ? S.cpu / 100 : 0, amp = 0.02 + Math.min(energy * 5, 0.3) + load * 0.05;   // hög belastning gör klotet oroligare
+  const cy = Math.cos(rotY), sy = Math.sin(rotY), cx = Math.cos(rotX), sx = Math.sin(rotX);
+  const cs = getComputedStyle(document.body), rgb = cs.getPropertyValue('--rgb').trim(), [r, g, b] = rgb.split(',').map(Number);
+  ctx.clearRect(0, 0, W, H);
+  const gr = ctx.createRadialGradient(CX, CY, 0, CX, CY, R * 1.3);
+  gr.addColorStop(0, `rgba(${rgb},${0.17 + load * 0.1})`); gr.addColorStop(0.6, `rgba(${rgb},0.04)`); gr.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = gr; ctx.fillRect(CX - R * 1.4, CY - R * 1.4, R * 2.8, R * 2.8);
+  ctx.globalCompositeOperation = 'lighter';
+  // omloppsbanan
+  const rx = Math.min(R * 2.05, W / 2 - 62), ry = R * 0.5, n = nodes.size;
+  ctx.strokeStyle = `rgb(${rgb})`; ctx.globalAlpha = 0.16; ctx.lineWidth = 1; ctx.beginPath(); ctx.ellipse(CX, CY, rx, ry, 0, 0, TAU); ctx.stroke();
+  // HUD-ringar
+  const ring = (rr, a, segs, gap, lw, al) => { ctx.globalAlpha = al; ctx.lineWidth = lw; for (let i = 0; i < segs; i++) { ctx.beginPath(); ctx.arc(CX, CY, rr, a + i * TAU / segs, a + (i + 1) * TAU / segs - gap); ctx.stroke(); } };
+  ring(R * 1.42, T * 0.16, 3, 0.55, 1.4, 0.5); ring(R * 1.5, -T * 0.1, 90, TAU / 90 * 0.72, 4, 0.2); ring(R * 1.36, -T * 0.23, 2, 2.2, 2.4, 0.3);
+  const cols = [`rgb(${rgb})`, `rgb(${(r + 255 * 1.5) / 2.5 | 0},${(g + 255 * 1.5) / 2.5 | 0},${(b + 255 * 1.5) / 2.5 | 0})`, `rgb(${(r + 255) / 2 | 0},${(g + 210) / 2 | 0},${(b + 150) / 2 | 0})`];
+  for (let gi = 0; gi < 3; gi++) {
+    ctx.fillStyle = cols[gi];
+    for (let i = 0; i < N; i++) {
+      if (P.cg[i] !== gi) continue;
+      const p = P.ph[i], rr = P.rf[i] * (1 + 0.025 * Math.sin(T * 0.8 + p));
+      let x = P.x[i] * cy + P.z[i] * sy, z = -P.x[i] * sy + P.z[i] * cy, y = P.y[i] * cx - z * sx; z = P.y[i] * sx + z * cx;
+      x = x * rr + Math.sin(y * 3.1 + T * 1.3 + p) * amp; y = y * rr + Math.sin(z * 2.7 + T * 1.1 + p * 1.7) * amp; z = z * rr;
+      const sc = 3.2 / (3.2 - z), s = P.sz[i] * sc;
+      ctx.globalAlpha = clamp(0.1 + 0.9 * (z + 1.3) / 2.6, 0.05, 1) * P.br[i] * (0.72 + 0.28 * Math.sin(T * P.tw[i] + p * 3));
+      ctx.fillRect(CX + x * R * sc - s / 2, CY + y * R * sc - s / 2, s, s);
+    }
+  }
+  ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+  for (const nd of nodes.values()) {
+    const a = orbit + nd.i * TAU / Math.max(n, 1), d = (1 - Math.cos(a)) / 2, s = 1 - d * 0.28;
+    nd.el.style.transform = `translate(${(CX + Math.sin(a) * rx).toFixed(1)}px,${(CY + Math.cos(a) * ry).toFixed(1)}px) scale(${s.toFixed(3)})`;
+    nd.el.style.opacity = (1 - d * 0.45).toFixed(2); nd.el.style.zIndex = Math.round((1 - d) * 100);
+  }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+showLogin();
+</script>
+</body>
+</html>
