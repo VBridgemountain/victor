@@ -8,20 +8,22 @@ Det här repot innehåller två olika program som delar utseende men inte kod.
 |---|---|---|
 | Vad det är | Startskärm med partikelglober, appar, widgets, påminnelser och brainstorm | Kontrollpanel för en dedikerad serverdator |
 | Var det körs | I webbläsaren, som installerad webbapp eller som Android-startskärm | På serverdatorn (Node.js), styrs från webbläsaren |
-| Var koden ligger | Repots rot och `android/` | `server/` |
+| Var koden ligger | [`desktop/`](desktop/) | [`server/`](server/) |
 | Kom igång | Öppna länken nedan | Se [server/README.md](server/README.md) |
 
 ## V.I.C.T.O.R. — skrivbord och telefon
 
 - **Webb:** https://vbridgemountain.github.io/victor/ (går att installera som app från Chrome eller Edge)
-- **Android:** [victor.apk](https://vbridgemountain.github.io/victor/victor.apk) (startskärm som läser in telefonens appar)
+- **Android:** [victor.apk](https://vbridgemountain.github.io/victor/desktop/victor.apk) (startskärm som läser in telefonens appar)
 
-Filer:
+Filer i [`desktop/`](desktop/):
 
 - `index.html` — hela appen, utan byggsteg
 - `manifest.webmanifest`, `sw.js`, `icon*` — gör att den går att installera och starta utan nät
-- `android/` — Android-skalet runt samma `index.html`; byggs med `android/build.ps1`
+- `android/` — Android-skalet runt samma `index.html`; byggs med `desktop/android/build.ps1`
 - `victor.apk` — den byggda Android-appen
+
+`index.html` i repots rot skickar bara vidare till `desktop/`, så att den gamla adressen fortsätter fungera.
 
 All data sparas i enheten (webbläsarens lagring). Inget konto och ingen server behövs.
 

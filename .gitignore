@@ -1,6 +1,6 @@
 # byggresultat för Android-launchern
-android/build/
-android/res/mipmap-xxhdpi/ic_launcher.png
+desktop/android/build/
+desktop/android/res/mipmap-xxhdpi/ic_launcher.png
 
 # V.I.C.T.O.R. Server: lösenord, inställningar, loggar och hämtade spelservrar
 server/data/
