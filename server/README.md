@@ -69,3 +69,15 @@ Slå först på tvåstegsinloggning under Inställningar → Säkerhet och fjär
 
 Fel lösenord fem gånger spärrar den besökaren i en minut, och väntan fördubblas för varje ny omgång. Inloggningar loggas i
 `data/logs/access.log` och visas under Säkerhet och fjärråtkomst.
+
+## Översyn från V.I.C.T.O.R. på dator och telefon
+
+Widgeten **Server** i V.I.C.T.O.R. visar om allt är igång: processor, minne, disk, nätverk, IP-adresser, spelservrar och en
+lista över det som behöver åtgärdas (full disk, spelserver som stannat oväntat, väntande uppdatering m.m.).
+
+1. Skapa en läsnyckel i panelen under Inställningar → Säkerhet och fjärråtkomst.
+2. Lägg till widgeten Server i V.I.C.T.O.R. och ange serverns adress och nyckeln.
+
+Nyckeln kan bara läsa översikten (`/api/summary`) och inte styra något. Från den publicerade appen krävs serverns
+https-adress. Ligger Cloudflare Access framför panelen behöver sökvägen `/api/summary` en egen Access-regel med Bypass,
+annars stoppas widgeten av inloggningsspärren.

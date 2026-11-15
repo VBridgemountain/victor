@@ -1211,6 +1211,87 @@ const TYPES = {
       tick(); return tick;
     } },
 
+  // Översyn över en V.I.C.T.O.R. Server: läser serverns statusöversikt med en läsnyckel (kan inte styra något)
+  server: { title: 'Server', icon: '🖥️', desc: 'Översyn över din V.I.C.T.O.R. Server',
+    render(w, body) {
+      const d = w.data, OK = '#3dffa0', WARN = '#ffc24d', BAD = '#ff5a4d';
+      const setup = msg => {
+        body.textContent = '';
+        const u = el('input', { class: 'in', placeholder: 'https://server.dindomän.se', 'aria-label': 'Serverns adress', value: d.url || '' }),
+              k = el('input', { class: 'in', placeholder: 'Läsnyckel', 'aria-label': 'Läsnyckel', value: d.key || '', style: 'margin-top:7px' });
+        body.append(el('div', { class: 'muted', style: 'margin-bottom:9px', text: msg || 'Ange serverns adress och läsnyckeln. Nyckeln skapar du i serverpanelen under Inställningar → Säkerhet och fjärråtkomst.' }),
+          el('form', { onsubmit: e => { e.preventDefault(); d.url = u.value.trim().replace(/\/+$/, ''); d.key = k.value.trim(); if (d.url && !/^https?:\/\//.test(d.url)) d.url = 'https://' + d.url;
+            save(); refresh('server'); } }, u, k, el('div', { class: 'row', style: 'margin-top:9px' }, el('button', { class: 'btn', text: 'Spara' }))));
+      };
+      if (!d.url || !d.key) { setup(); return; }
+      const fB = n => { const u = ['B', 'kB', 'MB', 'GB', 'TB']; let i = 0; while (n >= 1000 && i < 4) { n /= 1000; i++; } return (i ? n.toFixed(n < 10 ? 1 : 0) : n) + ' ' + u[i]; };
+      const fR = b => { b *= 8; const u = ['bit/s', 'kbit/s', 'Mbit/s', 'Gbit/s']; let i = 0; while (b >= 1000 && i < 3) { b /= 1000; i++; } return (i ? b.toFixed(b < 10 ? 1 : 0) : Math.round(b)) + ' ' + u[i]; };
+      const fD = s => { const dd = Math.floor(s / 86400), hh = Math.floor(s % 86400 / 3600); return dd ? `${dd} d ${hh} h` : hh ? `${hh} h ${Math.floor(s % 3600 / 60)} min` : `${Math.floor(s / 60)} min`; };
+      const dot = c => el('span', { style: `display:inline-block;width:9px;height:9px;border-radius:50%;background:${c};box-shadow:0 0 8px ${c};flex:none` });
+      const out = el('div', { class: 'muted', text: 'Ansluter till servern…' }); body.append(out);
+      const seen = w._seen || (w._seen = new Set());   // varningar som redan aviserats, så att samma sak inte larmar varje gång
+      const alarm = (key, text) => { if (seen.has(key)) return; seen.add(key); beep(); toast('SERVER', text, true); };
+      const foot = () => el('div', { class: 'row', style: 'margin-top:10px;flex-wrap:wrap' },
+        [['Panel', '/'], ['Labb', '/lab.html'], ['Spelhall', '/arcade.html']].map(([t, p]) => el('button', { class: 'btn', text: t, onclick: () => openUrl(d.url + p) })),
+        el('button', { class: 'btn', text: '⚙', 'aria-label': 'Ändra serverns adress och nyckel', onclick: () => setup() }));
+      const fail = (title, why) => { out.className = ''; out.textContent = '';
+        out.append(el('div', { class: 'row', style: 'align-items:center;gap:8px' }, dot(BAD), el('b', { text: title })), el('div', { class: 'muted', style: 'margin-top:6px', text: why }), foot()); };
+      async function load() {
+        if (location.protocol === 'https:' && /^http:\/\/(?!localhost|127\.)/.test(d.url))
+          return fail('Adressen måste börja med https', 'En säker sida får inte läsa från en okrypterad adress. Använd serverns https-adress (t.ex. via Cloudflare Tunnel).');
+        let s;
+        try {
+          const r = await fetch(d.url + '/api/summary', { headers: { Authorization: 'Bearer ' + d.key }, cache: 'no-store' });
+          if (r.status === 401 || r.status === 403) return fail('Nyckeln godkänns inte', (await r.json().catch(() => ({}))).error || 'Kontrollera läsnyckeln.');
+          if (!r.ok) throw new Error('HTTP ' + r.status);
+          s = await r.json();
+        } catch { alarm('down', 'Servern svarar inte.'); return fail('Servern svarar inte', 'Den kan vara avstängd, sakna nät eller ligga bakom en spärr som stoppar widgeten. Försöker igen om en stund.'); }
+        seen.delete('down');
+        const bad = s.alerts.filter(a => a.level === 'bad'), warn = s.alerts.filter(a => a.level !== 'bad'), col = bad.length ? BAD : warn.length ? WARN : OK;
+        for (const a of bad) alarm(a.text, a.text);
+        for (const k of [...seen]) if (k !== 'down' && !bad.some(a => a.text === k)) seen.delete(k);
+        const bar = p => el('div', { class: 'bar' }, el('i', { style: `width:${clamp(p, 0, 100)}%` })), kv = (a, b) => el('div', { class: 'kv' }, el('span', { text: a }), el('span', { text: b }));
+        out.className = ''; out.textContent = '';
+        out.append(...[   // listor och tomma värden plattas ut innan de läggs in
+          el('div', { class: 'row', style: 'align-items:center;gap:8px' }, dot(col),
+            el('b', { class: 'grow', text: bad.length ? `${bad.length} åtgärd${bad.length > 1 ? 'er' : ''} behövs` : warn.length ? 'Igång · håll koll' : 'Allt är igång' }),
+            el('span', { class: 'muted mono', text: s.host })),
+          s.alerts.map(a => el('div', { style: `margin-top:7px;padding:6px 8px;border-left:2px solid ${a.level === 'bad' ? BAD : WARN};background:rgba(255,255,255,.04);font-size:12.5px;line-height:1.35`, text: a.text })),
+          el('div', { style: 'margin-top:10px' }),
+          kv('Processor', s.cpu + ' %'), bar(s.cpu), kv('Minne', s.mem + ' %'), bar(s.mem),
+          s.disk ? [kv('Disk', fB(s.disk.free) + ' ledigt'), bar((1 - s.disk.free / s.disk.total) * 100)] : null,
+          kv('Ut / in', fR(s.net.txRate) + ' / ' + fR(s.net.rxRate)),
+          kv('Publik IP', s.net.publicIp || 'okänd'), kv('Lokal IP', s.net.local.join(', ') || '–'), kv('Igång sedan', fD(s.uptime)),
+          s.servers.length ? el('div', { class: 'muted mono', style: 'margin:10px 0 4px;font-size:10px;letter-spacing:.16em', text: 'SPELSERVRAR' }) : null,
+          s.servers.map(g => el('div', { class: 'row', style: 'align-items:center;gap:8px;padding:3px 0' }, dot(g.online ? OK : g.busy || g.running ? WARN : 'rgba(255,255,255,.25)'),
+            el('span', { class: 'grow', text: g.name }),
+            el('span', { class: 'muted mono', text: g.busy ? 'arbetar' : g.online ? `${g.players}/${g.max} online` : g.running ? 'startar' : 'stoppad' }))),
+          foot()].flat(2).filter(x => x != null));
+      }
+      load(); let n = 0; return () => { if (++n % 15 === 0) load(); };   // var 15:e sekund
+    } },
+
+  ip: { title: 'IP och nätverk', icon: '🌐', desc: 'Din publika IP-adress och anslutning',
+    render(w, body) {
+      const mk = label => { const v = el('span', { text: '…' }); body.append(el('div', { class: 'kv' }, el('span', { text: label }), v)); return v; };
+      const big = el('div', { style: 'font:600 20px var(--mono);color:#fff;user-select:text;margin-bottom:8px', text: 'Hämtar…' });
+      body.append(el('div', { class: 'muted mono', style: 'font-size:10px;letter-spacing:.16em', text: 'PUBLIK IP' }), big);
+      const v6 = mk('IPv6'), st = mk('Anslutning'), tp = mk('Typ');
+      let ip = '';
+      body.append(el('div', { class: 'row', style: 'margin-top:9px' },
+        el('button', { class: 'btn', text: 'Kopiera', onclick: () => { if (ip) navigator.clipboard.writeText(ip).then(() => toast('IP', 'Adressen är kopierad.'), () => {}); } }),
+        el('button', { class: 'btn', text: 'Uppdatera', onclick: () => load() })));
+      const get = u => fetch(u, { cache: 'no-store' }).then(r => r.ok ? r.text() : '').then(t => /^[\da-f.:]+$/i.test(t.trim()) ? t.trim() : '').catch(() => '');
+      async function load() {
+        const [a, b] = await Promise.all([get('https://api.ipify.org'), get('https://api64.ipify.org')]);
+        ip = a || b; big.textContent = ip || 'okänd'; v6.textContent = b && b.includes(':') ? b : 'ingen';
+      }
+      const tick = () => { const c = navigator.connection;
+        st.textContent = navigator.onLine ? 'Online' + (c && c.downlink ? ' · ' + c.downlink + ' Mbit' : '') : 'Offline';
+        tp.textContent = c && (c.type || c.effectiveType) ? (c.type && c.type !== 'unknown' ? c.type : c.effectiveType) : 'okänd'; };
+      load(); tick(); let n = 0; return () => { tick(); if (++n % 600 === 0) load(); };   // var tionde minut
+    } },
+
   timer: { title: 'Timer', icon: '⏱️', desc: 'Nedräkning med larm',
     render(w, body) {
       const d = w.data; d.min = d.min || 25;

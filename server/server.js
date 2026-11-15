@@ -41,12 +41,12 @@ const tail = (file, lines = 200) => { try {
 const alive = pid => { if (!pid) return false; try { process.kill(pid, 0); return true; } catch (e) { return e.code === 'EPERM'; } };
 
 // ------------------------------------------------------------------ system + nätverk
-let cpuPrev = null, cpuPct = 0;
+let cpuPrev = null, cpuPct = 0, cpuAvg = 0;   // cpuAvg: utjämnat över ungefär en minut, för varningar
 function sampleCpu() {
   let idle = 0, total = 0;
   for (const c of os.cpus()) { for (const k in c.times) total += c.times[k]; idle += c.times.idle; }
   if (cpuPrev && total > cpuPrev.total) cpuPct = 100 * (1 - (idle - cpuPrev.idle) / (total - cpuPrev.total));
-  cpuPrev = { idle, total };
+  cpuPrev = { idle, total }; cpuAvg += (cpuPct - cpuAvg) * 0.07;
 }
 // Totalt mottaget/skickat sedan start. Windows: "netstat -e" (raden med två stora tal, oberoende av språk). Linux: /proc/net/dev.
 async function netTotals() {
@@ -199,11 +199,12 @@ function startServer(s) {
   // delar servern konsol med agenten: stängs agentens fönster med Ctrl+C kan spelservrarna följa med.
   const child = spawn(`${s.cmd} > "${gameLog(s)}" 2>&1`, { cwd: sdir(s), shell: true, detached: !WIN, windowsHide: true, stdio: 'ignore' });
   child.on('error', () => {}); child.unref();
-  s.pid = child.pid; s.startedAt = Date.now(); R(s.id).query = null; save();
+  s.pid = child.pid; s.startedAt = Date.now(); s.wanted = true; R(s.id).query = null; save();   // wanted: ska vara igång, så ett oväntat stopp kan upptäckas
 }
 function stopServer(s) {
+  s.wanted = false;
   if (!alive(s.pid)) { s.pid = 0; save(); return; }
-  const pid = s.pid, r = R(s.id); r.stopping = true;
+  const pid = s.pid, r = R(s.id); r.stopping = true; save();
   if (WIN) execFile('taskkill', ['/PID', String(pid), '/T', '/F'], { windowsHide: true }, () => {});
   else {
     try { process.kill(-pid, 'SIGTERM'); } catch { }
@@ -475,8 +476,38 @@ async function status() {
     steamcmd: { path: steamcmdPath(), installing: scInstall, error: scErr }, serversDir: cfg.serversDir, arcadePort: APORT,
   };
 }
+// Översikt för V.I.C.T.O.R.-widgeten på dator och telefon: bara läsning, med en egen läsnyckel i stället för inloggning.
+// Det som behöver åtgärdas samlas i "alerts" (level: 'bad' = åtgärd behövs, 'warn' = håll koll).
+async function summary(req) {
+  const d = await disk(), mem = 1 - os.freemem() / os.totalmem(), alerts = [], add = (level, text) => alerts.push({ level, text });
+  if (d && d.free / d.total < 0.05) add('bad', `Disken är nästan full: ${Math.round(d.free / 1e9)} GB ledigt.`);
+  else if (d && d.free / d.total < 0.12) add('warn', `Det börjar bli ont om diskutrymme: ${Math.round(d.free / 1e9)} GB ledigt.`);
+  if (mem > 0.93) add('bad', `Minnet är nästan slut (${Math.round(mem * 100)} % används).`); else if (mem > 0.85) add('warn', `Högt minnestryck (${Math.round(mem * 100)} % används).`);
+  if (cpuAvg > 90) add('warn', `Processorn har legat på ${Math.round(cpuAvg)} % en längre stund.`);
+  const servers = cfg.servers.map(s => { const v = serverView(s);
+    if (s.wanted && !v.running) add('bad', `${v.name} har stannat oväntat.`);
+    else if (v.running && v.queryPort && !v.online && Date.now() - v.startedAt > 180000) add('warn', `${v.name} är igång men svarar inte på statusförfrågan.`);
+    if (v.updateAvailable) add('warn', `${v.name} har en uppdatering att installera.`);
+    if (v.jobText && v.jobText !== 'Klar' && !v.job) add('warn', `${v.name}: ${v.jobText}`);
+    return { name: v.name, running: v.running, online: v.online, busy: !!v.job || v.stopping, players: v.query ? v.query.players : null, max: v.query ? v.query.max : null, port: v.port, update: v.updateAvailable }; });
+  if (!cfg.totp && loopback(req) && fwd(req)) add('warn', 'Servern nås via nätet utan tvåstegsinloggning.');
+  publicIp();
+  return { host: os.hostname(), platform: WIN ? 'Windows' : 'Linux', uptime: os.uptime(), time: Date.now(), cpu: Math.round(cpuPct), mem: Math.round(mem * 100),
+    disk: d ? { free: d.free, total: d.total } : null, net: { rxRate: Math.round(net.rxRate), txRate: Math.round(net.txRate), publicIp: pubIp.ip, local: localIps().map(a => a.ip) },
+    ports: ports.list.filter(x => !x.local).length, servers, alerts };
+}
 async function api(req, res, url) {
   const p = url.pathname, m = req.method;
+  if (p === '/api/summary') {   // nås från en annan webbadress (skrivbordsappen), därför egna CORS-huvuden och nyckel i stället för kaka
+    res.setHeader('Access-Control-Allow-Origin', '*'); res.setHeader('Access-Control-Allow-Headers', 'Authorization'); res.setHeader('Access-Control-Max-Age', '600');
+    if (m === 'OPTIONS') { res.writeHead(204); return res.end(); }
+    if (m !== 'GET') return send(res, 405, { error: 'Fel metod.' });
+    const ip = clientIp(req), key = Buffer.from((req.headers.authorization || '').replace(/^Bearer\s+/i, '')), want = Buffer.from(cfg.readKey || '');
+    if (locked(ip)) return send(res, 429, { error: 'För många försök. Vänta en stund.' });
+    if (!cfg.readKey) return send(res, 403, { error: 'Ingen läsnyckel är skapad på servern.' });
+    if (key.length !== want.length || !crypto.timingSafeEqual(key, want)) { failed(ip); return send(res, 401, { error: 'Fel läsnyckel.' }); }
+    return send(res, 200, await summary(req));
+  }
   if (m !== 'GET') {   // skydd mot att en annan webbsida skickar kommandon via din inloggade webbläsare
     const o = req.headers.origin; if (o && new URL(o).host !== req.headers.host) return send(res, 403, { error: 'Fel ursprung.' });
     if (p === '/api/arcade/upload') { if (!o) return send(res, 403, { error: 'Fel ursprung.' }); }   // filuppladdning: rå data, men bara från panelens egen sida
@@ -499,7 +530,10 @@ async function api(req, res, url) {
   }
   if (!authed(req)) return send(res, 401, { error: 'Inte inloggad.' });
   if (p === '/api/security' && m === 'GET') return send(res, 200, { totp: !!cfg.totp, https: isHttps(req), viaProxy: loopback(req) && !!fwd(req), you: clientIp(req),
-    recent: tail(ACCESS, 12).split('\n').filter(Boolean).reverse(), arcadeUrl: cfg.arcadeUrl || '' });
+    recent: tail(ACCESS, 12).split('\n').filter(Boolean).reverse(), arcadeUrl: cfg.arcadeUrl || '', readKey: cfg.readKey || '' });
+  if (p === '/api/readkey' && m === 'POST') { const b = await body(req);
+    if (b.action === 'off') delete cfg.readKey; else cfg.readKey = crypto.randomBytes(24).toString('base64url');
+    save(); logAccess(req, b.action === 'off' ? 'läsnyckel borttagen' : 'ny läsnyckel'); return send(res, 200, { readKey: cfg.readKey || '' }); }
   if (p === '/api/2fa/start' && m === 'POST') { totpPending = b32enc(crypto.randomBytes(20));
     return send(res, 200, { secret: totpPending, uri: `otpauth://totp/V.I.C.T.O.R.%20Server:${encodeURIComponent(os.hostname())}?secret=${totpPending}&issuer=V.I.C.T.O.R.%20Server` }); }
   if (p === '/api/2fa/enable' && m === 'POST') { const b = await body(req);

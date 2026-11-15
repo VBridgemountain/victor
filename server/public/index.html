@@ -338,6 +338,14 @@ async function openSecurity() {
            h('label', null, 'Skriv koden som appen visar'), c,
            h('div', { class: 'row' }, h('button', { class: 'btn pri', onclick: async () => { err.textContent = ''; try { await call('POST', '/api/2fa/enable', { code: c.value }); j.totp = true; draw2fa(); } catch (v) { err.textContent = v.message; } } }, 'Bekräfta och slå på'))); c.focus();
        } catch (v) { err.textContent = v.message; } } }, 'Slå på tvåstegsinloggning'))]);
+  const keyBox = h('div'), drawKey = () => put(keyBox, j.readKey
+    ? [h('p', { class: 'note', style: 'margin-top:0' }, 'Klistra in den här nyckeln och serverns adress i server-widgeten i V.I.C.T.O.R. på datorn eller telefonen. Nyckeln kan bara läsa status, inte styra något.'),
+       h('div', { class: 'big', style: 'font-size:13px;overflow-wrap:anywhere' }, j.readKey),
+       h('div', { class: 'row', style: 'margin-top:8px' }, h('button', { class: 'btn', onclick: () => navigator.clipboard.writeText(j.readKey).then(() => toast('Nyckeln är kopierad.'), () => toast('Kunde inte kopiera. Markera och kopiera för hand.')) }, 'Kopiera'),
+         h('button', { class: 'btn', onclick: () => setKey('new') }, 'Byt nyckel'), h('button', { class: 'btn red', onclick: () => setKey('off') }, 'Ta bort'))]
+    : [h('p', { class: 'note', style: 'margin-top:0' }, 'Med en läsnyckel kan server-widgeten i V.I.C.T.O.R. visa om allt är igång. Nyckeln kan bara läsa status.'),
+       h('div', { class: 'row', style: 'margin-top:0' }, h('button', { class: 'btn pri', onclick: () => setKey('new') }, 'Skapa läsnyckel'))]);
+  const setKey = async a => { try { j.readKey = (await call('POST', '/api/readkey', { action: a })).readKey; drawKey(); } catch (v) { err.textContent = v.message; } };
   const arc = h('input', { class: 'in', placeholder: 'tom = samma adress på port ' + (S.arcadePort || 8788) }); arc.value = j.arcadeUrl;
   modal('Säkerhet och fjärråtkomst', h('div', null,
     h('label', null, 'Den här anslutningen'),
@@ -349,10 +357,11 @@ async function openSecurity() {
       'Vill du ha en vanlig https-adress (t.ex. server.dindomän.se) fungerar Cloudflare Tunnel: peka en adress mot http://localhost:8787 och en till mot spelhallens port, och ange den senare här nedanför. ',
       'Egen HTTPS direkt i programmet: lägg cert.pem och key.pem i mappen data/tls och starta om.'),
     h('label', null, 'Spelhallens egen https-adress (bara vid tunnel)'), arc,
+    h('label', null, 'Läsnyckel för widgeten i V.I.C.T.O.R.'), keyBox,
     h('label', null, 'Senaste inloggningar'),
     h('pre', { class: 'log', style: 'height:120px;margin-top:0' }, j.recent.length ? j.recent.map(l => { const [t, ip, what] = l.split('\t'); return `${new Date(t).toLocaleString('sv-SE')}  ${what}  (${ip})`; }).join('\n') : 'Inga än.'),
     err, h('div', { class: 'row' }, h('button', { class: 'btn pri', onclick: async () => { try { await call('POST', '/api/settings', { arcadeUrl: arc.value }); closeModal(); } catch (v) { err.textContent = v.message; } } }, 'Spara'))));
-  draw2fa();
+  draw2fa(); drawKey();
 }
 $('bSet').onclick = () => {
   if (!S) return; editing = true;
