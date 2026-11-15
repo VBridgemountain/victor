@@ -225,7 +225,7 @@ function a2sAsk(port, head, type, parse, first = Buffer.alloc(0)) {   // skickar
   });
 }
 const cstr = (b, i) => { const e = b.indexOf(0, i), z = e < 0 ? b.length : e; return [b.toString('utf8', i, z), z + 1]; };
-const a2s = port => a2sAsk(port, Buffer.concat([Buffer.from([255, 255, 255, 255, 0x54]), Buffer.from('Source Engine Query ')]), 0x49, b => {
+const a2s = port => a2sAsk(port, Buffer.concat([Buffer.from([255, 255, 255, 255, 0x54]), Buffer.from('Source Engine Query\0')]), 0x49, b => {
   let i = 6, name, map; [name, i] = cstr(b, i); [map, i] = cstr(b, i); [, i] = cstr(b, i); [, i] = cstr(b, i); i += 2;
   return { name, map, players: b[i], max: b[i + 1] };
 });
@@ -367,13 +367,94 @@ async function labApi(req, res, url, m) {
 
 // ------------------------------------------------------------------ inloggning
 const sessions = new Map();   // token → utgångstid
-let fails = 0, lockedUntil = 0;
 const cookieTok = req => (/(?:^|;\s*)victor=([a-f0-9]{48})/.exec(req.headers.cookie || '') || [])[1];
 const authed = req => { const t = cookieTok(req), e = t && sessions.get(t); if (!e) return false; if (e < Date.now()) { sessions.delete(t); return false; } return true; };
-const isLocal = req => ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress);
-function newSession(res) {
+// Bakom en tunnel eller omvänd proxy (Cloudflare Tunnel, Tailscale Funnel, nginx) kommer alla anrop från den egna maskinen.
+// Då står besökarens riktiga adress i ett huvud, och anropet räknas inte som lokalt.
+const loopback = req => ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress);
+const fwd = req => req.headers['cf-connecting-ip'] || (req.headers['x-forwarded-for'] || '').split(',')[0].trim();
+const isLocal = req => loopback(req) && !fwd(req);
+const clientIp = req => clean((loopback(req) && fwd(req)) || req.socket.remoteAddress || '?', 60);
+const isHttps = req => !!req.socket.encrypted || (loopback(req) && req.headers['x-forwarded-proto'] === 'https');
+function newSession(req, res) {
   const t = crypto.randomBytes(24).toString('hex'); sessions.set(t, Date.now() + 30 * 864e5);
-  res.setHeader('Set-Cookie', `victor=${t}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${30 * 86400}`);
+  res.setHeader('Set-Cookie', `victor=${t}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${30 * 86400}${isHttps(req) ? '; Secure' : ''}`);
+}
+// Spärr per besökare: fem fel ger en minuts väntan, och väntan fördubblas för varje ny omgång (högst en timme).
+const tries = new Map();
+function locked(ip) { const t = tries.get(ip); return t && t.until > Date.now() ? Math.ceil((t.until - Date.now()) / 1000) : 0; }
+function failed(ip) { const t = tries.get(ip) || { n: 0, rounds: 0, until: 0 };
+  if (++t.n >= 5) { t.n = 0; t.until = Date.now() + Math.min(3600, 60 * 2 ** t.rounds++) * 1000; }
+  tries.set(ip, t); if (tries.size > 5000) tries.delete(tries.keys().next().value); }
+const ACCESS = path.join(LOGS, 'access.log');
+const logAccess = (req, what) => fs.appendFile(ACCESS, `${new Date().toISOString()}\t${clientIp(req)}\t${what}\n`, () => {});
+// Tvåstegsinloggning (TOTP, samma som Google Authenticator, Microsoft Authenticator, Aegis m.fl.)
+const B32 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+const b32enc = buf => { let bits = '', out = ''; for (const x of buf) bits += x.toString(2).padStart(8, '0'); for (let i = 0; i < bits.length; i += 5) out += B32[parseInt(bits.slice(i, i + 5).padEnd(5, '0'), 2)]; return out; };
+const b32dec = s => { let bits = ''; for (const c of s) bits += B32.indexOf(c).toString(2).padStart(5, '0'); return Buffer.from((bits.match(/.{8}/g) || []).map(b => parseInt(b, 2))); };
+function totpAt(secret, step) { const c = Buffer.alloc(8); c.writeBigUInt64BE(BigInt(step));
+  const h = crypto.createHmac('sha1', b32dec(secret)).update(c).digest(), o = h[19] & 15;
+  return String((h.readUInt32BE(o) & 0x7fffffff) % 1e6).padStart(6, '0'); }
+function totpOk(secret, code) { code = String(code || '').replace(/\D/g, ''); if (code.length !== 6) return false;
+  const now = Math.floor(Date.now() / 30000); return [-1, 0, 1].some(d => crypto.timingSafeEqual(Buffer.from(totpAt(secret, now + d)), Buffer.from(code))); }
+let totpPending = null;
+
+// ------------------------------------------------------------------ spelhallen: egna spelfiler som spelas i webbläsaren
+// Emulatorn (EmulatorJS) körs i en egen webbadress (porten efter panelens), skild från panelen, så att emulatorns kod
+// aldrig kan nå panelens inloggning. Spelfilerna hämtas dit med en tidsbegränsad nyckel i adressen.
+const ROMS = path.join(DATA, 'roms'), APORT = +(process.env.VICTOR_ARCADE_PORT || PORT + 1);
+const SYSTEMS = [
+  { key: 'psx', name: 'PlayStation', exts: ['chd', 'pbp', 'iso', 'bin', 'cue', 'img'] },
+  { key: 'n64', name: 'Nintendo 64', exts: ['z64', 'n64', 'v64'] },
+  { key: 'snes', name: 'Super Nintendo', exts: ['sfc', 'smc'] },
+  { key: 'nes', name: 'Nintendo (NES)', exts: ['nes'] },
+  { key: 'gba', name: 'Game Boy Advance', exts: ['gba'] },
+  { key: 'gb', name: 'Game Boy / Color', exts: ['gb', 'gbc'] },
+  { key: 'nds', name: 'Nintendo DS', exts: ['nds'] },
+  { key: 'segaMD', name: 'Sega Mega Drive', exts: ['md', 'gen', 'smd', 'bin'] },
+  { key: 'segaMS', name: 'Sega Master System', exts: ['sms'] },
+  { key: 'segaGG', name: 'Sega Game Gear', exts: ['gg'] },
+  { key: 'atari2600', name: 'Atari 2600', exts: ['a26'] },
+];
+if (!cfg.secret) { cfg.secret = crypto.randomBytes(32).toString('hex'); save(); }
+const sign = s => crypto.createHmac('sha256', cfg.secret).update(s).digest('base64url');
+const romToken = rel => { const b = Buffer.from(JSON.stringify({ p: rel, e: Date.now() + 12 * 3600e3 })).toString('base64url'); return b + '.' + sign(b); };
+function romFromToken(tok) { const [b, sig] = String(tok).split('.'); if (!b || !sig || sig.length !== sign(b).length || !crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(sign(b)))) return null;
+  try { const j = JSON.parse(Buffer.from(b, 'base64url')); return j.e > Date.now() ? j.p : null; } catch { return null; } }
+const romName = n => { const s = path.basename(String(n || '')).replace(/[^\p{L}\p{N} ._()\[\]!&',+-]/gu, '_').trim().slice(0, 120); return /^[^.]/.test(s) ? s : ''; };
+function romPath(system, name) { const sys = SYSTEMS.find(s => s.key === system), n = romName(name);
+  if (!sys || !n) throw new Error('Okänt system eller filnamn.');
+  const ext = n.split('.').pop().toLowerCase(); if (![...sys.exts, 'zip', '7z'].includes(ext)) throw new Error(`Filtypen .${ext} hör inte till ${sys.name}.`);
+  return path.join(ROMS, sys.key, n); }
+function arcadeList() {
+  const games = [];
+  for (const s of SYSTEMS) { let files = []; try { files = fs.readdirSync(path.join(ROMS, s.key)); } catch { }
+    for (const f of files.sort((a, b) => a.localeCompare(b))) { const ext = f.split('.').pop().toLowerCase(); if (ext === 'cue' || ![...s.exts, 'zip', '7z'].includes(ext)) continue;
+      games.push({ system: s.key, name: f, size: fs.statSync(path.join(ROMS, s.key, f)).size, token: romToken(s.key + '/' + f) }); } }
+  let bios = []; try { bios = fs.readdirSync(path.join(ROMS, 'bios')).filter(f => /\.bin$/i.test(f)).map(f => ({ system: f.replace(/\.bin$/i, ''), token: romToken('bios/' + f) })); } catch { }
+  return { systems: SYSTEMS, games, bios, port: APORT, url: cfg.arcadeUrl || '', root: ROMS };
+}
+function arcadeUpload(req, res, url) {   // tar emot filen som en ström rakt till disk
+  const f = romPath(url.searchParams.get('system'), url.searchParams.get('name')), tmp = f + '.del';
+  fs.mkdirSync(path.dirname(f), { recursive: true });
+  const w = fs.createWriteStream(tmp); let n = 0, dead = false;
+  const fail = msg => { if (dead) return; dead = true; w.destroy(); fs.rm(tmp, { force: true }, () => {}); if (!res.headersSent) send(res, 400, { error: msg }); req.destroy(); };
+  req.on('data', c => { n += c.length; if (n > 4 * 2 ** 30) fail('Filen är större än 4 GB.'); });
+  req.on('aborted', () => fail('Uppladdningen avbröts.')); w.on('error', e => fail(e.message));
+  req.pipe(w); w.on('finish', () => { if (dead) return; fs.renameSync(tmp, f); send(res, 200, { ok: true }); });
+}
+function arcadeServer(req, res) {   // spelarens egen adress: bara spelarsidan och spelfiler med giltig nyckel
+  let url; try { url = new URL(req.url, 'http://x'); } catch { res.writeHead(400); return res.end(); }
+  res.setHeader('X-Content-Type-Options', 'nosniff'); res.setHeader('Referrer-Policy', 'no-referrer');
+  if (url.pathname === '/player.html') {
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache',
+      'Content-Security-Policy': "default-src 'self' https://cdn.emulatorjs.org blob: data: 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval'; worker-src 'self' blob:" });
+    return fs.createReadStream(path.join(ROOT, 'arcade', 'player.html')).pipe(res);
+  }
+  const m = url.pathname.match(/^\/rom\/([\w.-]+)\//), rel = m && romFromToken(m[1]), file = rel && path.join(ROMS, rel);
+  if (!file || !file.startsWith(ROMS + path.sep) || !fs.existsSync(file)) { res.writeHead(404); return res.end('Finns inte'); }
+  res.writeHead(200, { 'Content-Type': 'application/octet-stream', 'Content-Length': fs.statSync(file).size, 'Cache-Control': 'private, max-age=3600' });
+  fs.createReadStream(file).pipe(res);
 }
 
 // ------------------------------------------------------------------ http
@@ -391,29 +472,45 @@ async function status() {
     cpu: Math.round(cpuPct), cores: os.cpus().length, mem: { total: os.totalmem(), free: os.freemem() }, disk: d,
     net: { rx: net.rx, tx: net.tx, rxRate: net.rxRate, txRate: net.txRate, hist: net.hist, since: net.since, local: localIps(), publicIp: pubIp.ip },
     ports: ports.list, servers: cfg.servers.map(serverView), templates: TEMPLATES,
-    steamcmd: { path: steamcmdPath(), installing: scInstall, error: scErr }, serversDir: cfg.serversDir,
+    steamcmd: { path: steamcmdPath(), installing: scInstall, error: scErr }, serversDir: cfg.serversDir, arcadePort: APORT,
   };
 }
 async function api(req, res, url) {
   const p = url.pathname, m = req.method;
   if (m !== 'GET') {   // skydd mot att en annan webbsida skickar kommandon via din inloggade webbläsare
     const o = req.headers.origin; if (o && new URL(o).host !== req.headers.host) return send(res, 403, { error: 'Fel ursprung.' });
-    if (!/^application\/json/.test(req.headers['content-type'] || '')) return send(res, 415, { error: 'JSON krävs.' });
+    if (p === '/api/arcade/upload') { if (!o) return send(res, 403, { error: 'Fel ursprung.' }); }   // filuppladdning: rå data, men bara från panelens egen sida
+    else if (!/^application\/json/.test(req.headers['content-type'] || '')) return send(res, 415, { error: 'JSON krävs.' });
   }
-  if (p === '/api/session' && m === 'GET') return send(res, 200, { setup: !cfg.pass, authed: authed(req), local: isLocal(req) });
+  if (p === '/api/session' && m === 'GET') return send(res, 200, { setup: !cfg.pass, authed: authed(req), local: isLocal(req), totp: !!cfg.totp });
   if (p === '/api/setup' && m === 'POST') {
     if (cfg.pass) return send(res, 400, { error: 'Ett lösenord finns redan.' });
     if (!isLocal(req)) return send(res, 403, { error: 'Första lösenordet måste väljas på servern själv (http://localhost:' + PORT + '), eller med: node server.js --set-password <lösenord>' });
     const b = await body(req); if (clean(b.password).length < 8) return send(res, 400, { error: 'Minst 8 tecken.' });
-    cfg.pass = hashPw(String(b.password)); save(); newSession(res); return send(res, 200, { ok: true });
+    cfg.pass = hashPw(String(b.password)); save(); newSession(req, res); return send(res, 200, { ok: true });
   }
   if (p === '/api/login' && m === 'POST') {
-    if (Date.now() < lockedUntil) return send(res, 429, { error: 'För många försök. Vänta en minut.' });
+    const ip = clientIp(req), wait = locked(ip);
+    if (wait) return send(res, 429, { error: `För många försök. Vänta ${wait > 90 ? Math.ceil(wait / 60) + ' minuter' : wait + ' sekunder'}.` });
     const b = await body(req);
-    if (!checkPw(b.password || '')) { if (++fails >= 5) { fails = 0; lockedUntil = Date.now() + 60000; } return send(res, 401, { error: 'Fel lösenord.' }); }
-    fails = 0; newSession(res); return send(res, 200, { ok: true });
+    if (!checkPw(b.password || '') || (cfg.totp && !totpOk(cfg.totp, b.code))) { failed(ip); logAccess(req, 'misslyckad inloggning');
+      return send(res, 401, { error: cfg.totp ? 'Fel lösenord eller kod.' : 'Fel lösenord.' }); }
+    tries.delete(ip); logAccess(req, 'inloggad'); newSession(req, res); return send(res, 200, { ok: true });
   }
   if (!authed(req)) return send(res, 401, { error: 'Inte inloggad.' });
+  if (p === '/api/security' && m === 'GET') return send(res, 200, { totp: !!cfg.totp, https: isHttps(req), viaProxy: loopback(req) && !!fwd(req), you: clientIp(req),
+    recent: tail(ACCESS, 12).split('\n').filter(Boolean).reverse(), arcadeUrl: cfg.arcadeUrl || '' });
+  if (p === '/api/2fa/start' && m === 'POST') { totpPending = b32enc(crypto.randomBytes(20));
+    return send(res, 200, { secret: totpPending, uri: `otpauth://totp/V.I.C.T.O.R.%20Server:${encodeURIComponent(os.hostname())}?secret=${totpPending}&issuer=V.I.C.T.O.R.%20Server` }); }
+  if (p === '/api/2fa/enable' && m === 'POST') { const b = await body(req);
+    if (!totpPending || !totpOk(totpPending, b.code)) return send(res, 400, { error: 'Koden stämmer inte. Kontrollera att klockan i telefonen går rätt och försök igen.' });
+    cfg.totp = totpPending; totpPending = null; save(); logAccess(req, 'tvåstegsinloggning påslagen'); return send(res, 200, { ok: true }); }
+  if (p === '/api/2fa/disable' && m === 'POST') { const b = await body(req);
+    if (!checkPw(b.password || '')) return send(res, 401, { error: 'Fel lösenord.' });
+    delete cfg.totp; save(); logAccess(req, 'tvåstegsinloggning avstängd'); return send(res, 200, { ok: true }); }
+  if (p === '/api/arcade/list' && m === 'GET') return send(res, 200, arcadeList());
+  if (p === '/api/arcade/upload' && m === 'POST') return arcadeUpload(req, res, url);
+  if (p === '/api/arcade/delete' && m === 'POST') { const b = await body(req); fs.rmSync(romPath(b.system, b.name), { force: true }); return send(res, 200, { ok: true }); }
   if (p === '/api/logout' && m === 'POST') { sessions.delete(cookieTok(req)); return send(res, 200, { ok: true }); }
   if (p === '/api/status' && m === 'GET') return send(res, 200, await status());
   if (p.startsWith('/api/lab/')) return labApi(req, res, url, m);
@@ -421,6 +518,7 @@ async function api(req, res, url) {
     const b = await body(req);
     if (b.steamcmd != null) cfg.steamcmd = clean(b.steamcmd, 400);
     if (b.serversDir) cfg.serversDir = path.resolve(clean(b.serversDir, 400));
+    if (b.arcadeUrl != null) { const u = clean(b.arcadeUrl, 200).replace(/\/+$/, ''); if (u && !/^https?:\/\/[\w.:-]+$/.test(u)) throw new Error('Spelhallens adress ska se ut som https://namn.exempel.se'); cfg.arcadeUrl = u; }
     save(); return send(res, 200, { ok: true });
   }
   if (p === '/api/steamcmd/install' && m === 'POST') { scErr = ''; installSteamcmd().catch(e => { scErr = e.message; }); return send(res, 200, { ok: true }); }
@@ -453,7 +551,11 @@ async function api(req, res, url) {
   send(res, 404, { error: 'Finns inte.' });
 }
 let scErr = '';
-http.createServer(async (req, res) => {
+// Egen HTTPS: lägg cert.pem och key.pem i data/tls. Annars vanlig HTTP (bakom VPN eller en tunnel som sköter HTTPS).
+let tls = null; try { tls = { cert: fs.readFileSync(path.join(DATA, 'tls', 'cert.pem')), key: fs.readFileSync(path.join(DATA, 'tls', 'key.pem')) }; } catch { }
+const mkServer = fn => tls ? https.createServer(tls, fn) : http.createServer(fn), SCHEME = tls ? 'https' : 'http';
+mkServer(arcadeServer).listen(APORT, BIND).on('error', e => console.error('Spelhallen kunde inte starta på port ' + APORT + ': ' + e.message));
+mkServer(async (req, res) => {
   let url; try { url = new URL(req.url, 'http://x'); } catch { res.writeHead(400); return res.end(); }
   res.setHeader('X-Content-Type-Options', 'nosniff'); res.setHeader('X-Frame-Options', 'DENY'); res.setHeader('Referrer-Policy', 'no-referrer');
   if (url.pathname.startsWith('/api/')) { try { await api(req, res, url); } catch (e) { if (!res.headersSent) send(res, 400, { error: e.message }); } return; }
@@ -462,9 +564,10 @@ http.createServer(async (req, res) => {
   res.writeHead(200, { 'Content-Type': MIME[path.extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-cache' });
   fs.createReadStream(file).pipe(res);
 }).listen(PORT, BIND, () => {
-  console.log(`V.I.C.T.O.R. Server igång.\n  På den här datorn:  http://localhost:${PORT}`);
-  for (const a of localIps()) console.log(`  I nätverket:        http://${a.ip}:${PORT}`);
-  if (!cfg.pass) console.log('Inget lösenord är valt än: öppna http://localhost:' + PORT + ' på den här datorn och välj ett.');
+  console.log(`V.I.C.T.O.R. Server igång.\n  På den här datorn:  ${SCHEME}://localhost:${PORT}`);
+  for (const a of localIps()) console.log(`  I nätverket:        ${SCHEME}://${a.ip}:${PORT}`);
+  console.log(`  Spelhallens spelare använder port ${APORT}.`);
+  if (!cfg.pass) console.log('Inget lösenord är valt än: öppna ' + SCHEME + '://localhost:' + PORT + ' på den här datorn och välj ett.');
 });
 
 sampleCpu(); sampleNet();

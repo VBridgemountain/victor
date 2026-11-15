@@ -43,3 +43,29 @@ Knappen Labb i panelen öppnar en testmiljö på `/lab.html`:
 
 Terminalen är ett skal utan riktig tty: vanliga kommandon fungerar, men inte helskärmsprogram som vim.
 Kretskontrollen följer kopplingsregler och är ingen elektrisk simulering.
+
+## Spelhall (emulator i webbläsaren)
+
+Knappen Spelhall öppnar `/arcade.html`. Lägg in dina egna spelfiler (via sidan eller direkt i `data/roms/<system>/`)
+och spela dem i webbläsaren på dator eller telefon. Stöd: PlayStation (PS1), Nintendo 64, SNES, NES, Game Boy/Color/Advance,
+Nintendo DS, Sega Mega Drive/Master System/Game Gear och Atari 2600. PS2 och nyare, Xbox och vanliga PC-spel går inte att
+köra i en webbläsare.
+
+- Emulatorn är [EmulatorJS](https://emulatorjs.org) och hämtas från deras nät när ett spel startas, så enheten behöver internet.
+- Spelaren körs på en egen port (8788, ändras med `VICTOR_ARCADE_PORT`), skild från panelen, så att emulatorns kod inte kan
+  nå panelens inloggning. Spelfilerna hämtas dit med en nyckel som gäller i 12 timmar.
+- Sparningar lagras i webbläsaren du spelar i. En egen PlayStation-BIOS kan läggas som `data/roms/bios/psx.bin`.
+- Lägg bara in spel du själv äger.
+
+## Nå servern utifrån
+
+Slå först på tvåstegsinloggning under Inställningar → Säkerhet och fjärråtkomst. Välj sedan en väg in:
+
+- **Tailscale (enklast, säkrast):** installera Tailscale på servern och på telefon/dator. Panelen nås på serverns
+  Tailscale-adress, port 8787, utan att något öppnas mot internet.
+- **Cloudflare Tunnel (vanlig https-adress):** kräver en domän hos Cloudflare. Peka en adress mot `http://localhost:8787`
+  och en andra mot `http://localhost:8788`, och ange den andra som "Spelhallens egen https-adress" i panelen.
+- **Egen HTTPS i programmet:** lägg `cert.pem` och `key.pem` i `data/tls` och starta om. Då krävs portöppning i routern.
+
+Fel lösenord fem gånger spärrar den besökaren i en minut, och väntan fördubblas för varje ny omgång. Inloggningar loggas i
+`data/logs/access.log` och visas under Säkerhet och fjärråtkomst.

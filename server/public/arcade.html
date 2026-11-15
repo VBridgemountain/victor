@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#02060b">
+<title>V.I.C.T.O.R. Spelhall — NoirLab</title>
+<style>
+:root{--rgb:0,216,255;--accent:rgb(var(--rgb));--bg:#02060b;--text:color-mix(in srgb,var(--accent) 22%,#fff);--dim:color-mix(in srgb,var(--accent) 45%,#8a98a3);
+  --line:rgba(var(--rgb),.32);--panel:rgba(var(--rgb),.055);--warn:#ff5a4d;--mono:Consolas,"Cascadia Mono","SF Mono",Menlo,monospace}
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%}
+body{background:radial-gradient(ellipse at 50% 0,rgba(var(--rgb),.12),transparent 55%),var(--bg);background-attachment:fixed;color:var(--text);font:14px/1.45 "Segoe UI",system-ui,sans-serif}
+button,input,select{font:inherit;color:inherit}
+header{display:flex;align-items:center;gap:10px;padding:14px 18px;flex-wrap:wrap}
+.brand{font:600 15px var(--mono);letter-spacing:.42em;color:var(--accent);text-shadow:0 0 12px rgba(var(--rgb),.7)}
+.brand small{display:block;font:10px var(--mono);letter-spacing:.3em;color:var(--dim);margin-top:2px}
+.sp{flex:1}
+.btn{background:var(--panel);border:1px solid var(--line);padding:7px 13px;cursor:pointer;font:11px var(--mono);letter-spacing:.14em;text-transform:uppercase;text-decoration:none;
+  clip-path:polygon(7px 0,100% 0,100% calc(100% - 7px),calc(100% - 7px) 100%,0 100%,0 7px)}
+.btn:hover,.btn:focus-visible{background:rgba(var(--rgb),.16);border-color:var(--accent);outline:none} .btn.pri{background:rgba(var(--rgb),.22);border-color:var(--accent);color:#fff}
+.in{background:rgba(var(--rgb),.06);border:1px solid var(--line);padding:6px 9px;outline:none} select.in option{background:#04101a}
+main{padding:0 18px 30px;max-width:1200px;margin:0 auto}
+h2{font:11px var(--mono);letter-spacing:.2em;text-transform:uppercase;color:var(--accent);margin:22px 0 10px;display:flex;gap:10px;align-items:center}
+h2 i{font-style:normal;color:var(--dim)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px}
+.game{position:relative;background:rgba(2,8,14,.8);border:1px solid var(--line);padding:14px 12px 12px;cursor:pointer;min-height:92px;display:flex;flex-direction:column;gap:6px;
+  clip-path:polygon(10px 0,100% 0,100% calc(100% - 10px),calc(100% - 10px) 100%,0 100%,0 10px);transition:border-color .2s,box-shadow .2s}
+.game:hover,.game:focus-visible{border-color:var(--accent);box-shadow:inset 0 0 26px rgba(var(--rgb),.18);outline:none}
+.game b{font-weight:600;overflow-wrap:anywhere;line-height:1.3} .game span{font:11px var(--mono);color:var(--dim);margin-top:auto}
+.game .x{position:absolute;right:6px;top:4px;background:none;border:0;color:var(--dim);cursor:pointer;opacity:0;font-size:14px} .game:hover .x,.game .x:focus-visible{opacity:1} .game .x:hover{color:var(--warn)}
+.note{font-size:13px;color:var(--dim);line-height:1.5;max-width:760px}
+.box{background:rgba(2,8,14,.8);border:1px solid var(--line);padding:14px;margin-top:10px;display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+progress{flex:1;min-width:160px;height:6px;accent-color:var(--accent)}
+#stage{position:fixed;inset:0;z-index:20;background:#000;display:none;flex-direction:column} #stage.on{display:flex}
+#stage .bar{display:flex;gap:8px;align-items:center;padding:6px 10px;background:#04101a;border-bottom:1px solid var(--line)} #stage .bar b{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#stage iframe{flex:1;border:0;width:100%}
+#toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);z-index:50;background:rgba(2,8,14,.96);border:1px solid var(--warn);color:#fff;padding:9px 16px;font-size:13px;display:none;max-width:calc(100vw - 30px)}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">V.I.C.T.O.R. SPELHALL<small>BY NOIRLAB</small></div>
+  <div class="sp"></div>
+  <a class="btn" href="/lab.html">Labb</a>
+  <a class="btn" href="/">← Panel</a>
+</header>
+<main>
+  <p class="note">Spela dina egna spel direkt i webbläsaren, på dator eller telefon. Spelen körs i din enhet; servern lagrar filerna.
+    Lägg bara in spel du själv äger. Sparningar lagras i den webbläsare du spelar i.</p>
+  <div class="box">
+    <select class="in" id="sys" aria-label="System"></select>
+    <input type="file" id="file" class="in" aria-label="Spelfil">
+    <button class="btn pri" id="bUp">Lägg till spel</button>
+    <progress id="prog" max="1" value="0" hidden></progress>
+  </div>
+  <p class="note" id="hint"></p>
+  <div id="lib"></div>
+</main>
+<div id="stage"><div class="bar"><b id="gTitle"></b><button class="btn" id="bFull">Helskärm</button><button class="btn" id="bQuit">Avsluta</button></div><iframe id="frame" allow="fullscreen; gamepad; autoplay; screen-wake-lock" allowfullscreen></iframe></div>
+<div id="toast"></div>
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+function h(tag, props, ...kids) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(props || {})) { if (k.startsWith('on')) e.addEventListener(k.slice(2), v); else if (k === 'class') e.className = v; else if (v !== false && v != null) e.setAttribute(k, v === true ? '' : v); }
+  for (const k of kids.flat(Infinity)) if (k != null && k !== false) e.append(k.nodeType ? k : String(k));
+  return e;
+}
+function toast(t) { const e = $('toast'); e.textContent = t; e.style.display = 'block'; clearTimeout(toast.t); toast.t = setTimeout(() => e.style.display = 'none', 6000); }
+async function call(method, url, data) {
+  const r = await fetch(url, { method, headers: method === 'GET' ? {} : { 'Content-Type': 'application/json' }, body: method === 'GET' ? undefined : JSON.stringify(data || {}) });
+  if (r.status === 401) { location.href = '/'; throw new Error('Inte inloggad.'); }
+  const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.error || 'Något gick fel.'); return j;
+}
+const fmtB = n => { const u = ['B', 'kB', 'MB', 'GB']; let i = 0; while (n >= 1000 && i < 3) { n /= 1000; i++; } return (i ? n.toFixed(n < 10 ? 1 : 0) : n) + ' ' + u[i]; };
+let A = null;
+// Spelaren har en egen adress: den som är inställd, annars samma dator på spelhallens port
+const playerBase = () => A.url || `${location.protocol}//${location.hostname}:${A.port}`;
+async function load() {
+  A = await call('GET', '/api/arcade/list');
+  if (!$('sys').options.length) $('sys').replaceChildren(...A.systems.map(s => h('option', { value: s.key }, s.name)));
+  hint();
+  const lib = A.systems.map(s => [s, A.games.filter(g => g.system === s.key)]).filter(x => x[1].length);
+  $('lib').replaceChildren(...(lib.length ? lib.flatMap(([s, games]) => [h('h2', null, s.name, h('i', null, games.length)),
+    h('div', { class: 'grid' }, games.map(g => h('div', { class: 'game', tabindex: 0, role: 'button', onclick: () => play(g), onkeydown: e => { if (e.key === 'Enter') play(g); } },
+      h('b', null, g.name.replace(/\.[^.]+$/, '')), h('span', null, fmtB(g.size)),
+      h('button', { class: 'x', title: 'Ta bort', onclick: e => { e.stopPropagation(); del(g); } }, '✕'))))])
+    : [h('p', { class: 'note', style: 'margin-top:24px' }, 'Inga spel än. Välj system och en spelfil ovan, eller lägg filer direkt i mappen ' + A.root + ' på servern (en undermapp per system).')]));
+}
+function hint() { const s = A.systems.find(x => x.key === $('sys').value) || A.systems[0];
+  $('hint').textContent = `${s.name}: filtyper ${s.exts.map(e => '.' + e).join(' ')} eller .zip.` + (s.key === 'psx' ? ' PlayStation fungerar bäst med en fil per spel (.chd eller .pbp). En egen BIOS-fil kan läggas som bios/psx.bin i spelmappen.' : ''); }
+$('sys').onchange = hint;
+$('bUp').onclick = () => {
+  const f = $('file').files[0]; if (!f) return toast('Välj en spelfil först.');
+  const x = new XMLHttpRequest(), p = $('prog'); p.hidden = false; p.value = 0; $('bUp').disabled = true;
+  x.open('POST', `/api/arcade/upload?system=${encodeURIComponent($('sys').value)}&name=${encodeURIComponent(f.name)}`);
+  x.setRequestHeader('Content-Type', 'application/octet-stream');
+  x.upload.onprogress = e => { if (e.lengthComputable) p.value = e.loaded / e.total; };
+  x.onloadend = () => { p.hidden = true; $('bUp').disabled = false; let j = {}; try { j = JSON.parse(x.responseText); } catch { }
+    if (x.status === 401) return location.href = '/';
+    if (x.status !== 200) return toast(j.error || 'Uppladdningen misslyckades.');
+    $('file').value = ''; load().catch(e => toast(e.message)); };
+  x.send(f);
+};
+async function del(g) { if (!confirm(`Ta bort "${g.name}" från servern? Det går inte att ångra.`)) return;
+  try { await call('POST', '/api/arcade/delete', { system: g.system, name: g.name }); await load(); } catch (e) { toast(e.message); } }
+function play(g) {
+  if (location.protocol === 'https:' && !A.url && !location.port) return toast('Spelhallen behöver en egen https-adress när panelen nås via en tunnel. Ange den under Inställningar i panelen.');
+  const bios = A.bios.find(b => b.system === g.system), q = new URLSearchParams({ core: g.system, rom: g.token, name: g.name }); if (bios) q.set('bios', bios.token);
+  $('gTitle').textContent = g.name.replace(/\.[^.]+$/, ''); $('frame').src = playerBase() + '/player.html?' + q; $('stage').classList.add('on'); $('frame').focus();
+}
+$('bQuit').onclick = () => { if (document.fullscreenElement) document.exitFullscreen(); $('stage').classList.remove('on'); $('frame').src = 'about:blank'; };
+$('bFull').onclick = () => $('stage').requestFullscreen && $('stage').requestFullscreen();
+load().catch(e => toast(e.message));
+</script>
+</body>
+</html>

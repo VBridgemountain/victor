@@ -106,6 +106,7 @@ label{display:block;font:10px var(--mono);letter-spacing:.16em;text-transform:up
 <header>
   <div class="brand">V.I.C.T.O.R. SERVER<small>BY NOIRLAB</small></div>
   <div class="sp"></div>
+  <a class="btn" href="/arcade.html" style="text-decoration:none">Spelhall</a>
   <a class="btn" href="/lab.html" style="text-decoration:none">Labb</a>
   <button class="btn pri" id="bAdd">+ Spelserver</button>
   <button class="btn" id="bSet">Inställningar</button>
@@ -174,13 +175,14 @@ async function showLogin() {
   const s = await fetch('/api/session').then(r => r.json()).catch(() => null);
   if (!s) return modal('Ingen kontakt', h('p', null, 'Agenten på servern svarar inte.'), false);
   if (s.authed) { loggedIn = true; closeModal(); return poll(); }
-  const pw = h('input', { class: 'in', type: 'password', autocomplete: s.setup ? 'new-password' : 'current-password' }), err = h('div', { class: 'err' });
+  const pw = h('input', { class: 'in', type: 'password', autocomplete: s.setup ? 'new-password' : 'current-password' }), err = h('div', { class: 'err' }),
+        code = h('input', { class: 'in', inputmode: 'numeric', autocomplete: 'one-time-code', maxlength: 7, placeholder: '6 siffror' });
   const go = async e => { e.preventDefault(); err.textContent = '';
-    try { await call('POST', s.setup ? '/api/setup' : '/api/login', { password: pw.value }); loggedIn = true; closeModal(); poll(); } catch (x) { err.textContent = x.message; } };
+    try { await call('POST', s.setup ? '/api/setup' : '/api/login', { password: pw.value, code: code.value }); loggedIn = true; closeModal(); poll(); } catch (x) { err.textContent = x.message; } };
   modal(s.setup ? 'Välj lösenord' : 'Logga in', h('form', { onsubmit: go },
     h('p', null, s.setup ? 'Första start: välj lösenordet som skyddar panelen (minst 8 tecken). Den som loggar in kan starta program på servern.' : 'Ange lösenordet till serverpanelen.'),
     s.setup && !s.local && h('p', { class: 'note' }, 'Det första lösenordet måste väljas på servern själv, via http://localhost:8787, eller med kommandot node server.js --set-password.'),
-    h('label', null, 'Lösenord'), pw, err, h('div', { class: 'row' }, h('button', { class: 'btn pri' }, s.setup ? 'Spara' : 'Logga in'))), false);
+    h('label', null, 'Lösenord'), pw, !s.setup && s.totp && [h('label', null, 'Kod från autentiseringsappen'), code], err, h('div', { class: 'row' }, h('button', { class: 'btn pri' }, s.setup ? 'Spara' : 'Logga in'))), false);
 }
 $('bOut').onclick = () => call('POST', '/api/logout').catch(() => {}).then(showLogin);
 
@@ -321,6 +323,37 @@ function editServer(x) {
 }
 $('bAdd').onclick = () => S && editServer(null);
 
+// Säkerhet och fjärråtkomst: tvåstegsinloggning, senaste inloggningar och vägar in utifrån
+async function openSecurity() {
+  editing = true; const j = await call('GET', '/api/security'), err = h('div', { class: 'err' }), box = h('div');
+  const draw2fa = () => put(box, j.totp
+    ? [h('p', null, 'Tvåstegsinloggning är påslagen: utöver lösenordet krävs en kod från din autentiseringsapp.'),
+       h('div', { class: 'row', style: 'margin-top:0' }, h('button', { class: 'btn red', onclick: async () => { const pw = prompt('Ange lösenordet för att stänga av tvåstegsinloggningen:'); if (!pw) return;
+         try { await call('POST', '/api/2fa/disable', { password: pw }); j.totp = false; draw2fa(); } catch (v) { err.textContent = v.message; } } }, 'Stäng av'))]
+    : [h('p', null, 'Av. Slå på den innan panelen görs nåbar från internet: då räcker det inte att någon kommer över lösenordet.'),
+       h('div', { class: 'row', style: 'margin-top:0' }, h('button', { class: 'btn pri', onclick: async () => { try { const t = await call('POST', '/api/2fa/start'), c = h('input', { class: 'in', inputmode: 'numeric', maxlength: 7, placeholder: '6 siffror' });
+         put(box, h('p', null, 'Lägg till ett konto i en autentiseringsapp (t.ex. Google Authenticator eller Aegis), välj "ange nyckel manuellt" och skriv in:'),
+           h('div', { class: 'big', style: 'font-size:15px;letter-spacing:.08em;overflow-wrap:anywhere' }, t.secret.match(/.{1,4}/g).join(' ')),
+           h('p', { class: 'note' }, 'Kontonamn valfritt, typ: tidsbaserad. På telefonen kan du i stället trycka på länken: ', h('a', { href: t.uri, style: 'color:var(--accent)' }, 'öppna i autentiseringsapp')),
+           h('label', null, 'Skriv koden som appen visar'), c,
+           h('div', { class: 'row' }, h('button', { class: 'btn pri', onclick: async () => { err.textContent = ''; try { await call('POST', '/api/2fa/enable', { code: c.value }); j.totp = true; draw2fa(); } catch (v) { err.textContent = v.message; } } }, 'Bekräfta och slå på'))); c.focus();
+       } catch (v) { err.textContent = v.message; } } }, 'Slå på tvåstegsinloggning'))]);
+  const arc = h('input', { class: 'in', placeholder: 'tom = samma adress på port ' + (S.arcadePort || 8788) }); arc.value = j.arcadeUrl;
+  modal('Säkerhet och fjärråtkomst', h('div', null,
+    h('label', null, 'Den här anslutningen'),
+    h('p', null, j.https ? 'Krypterad (HTTPS)' : 'Okrypterad (HTTP)', j.viaProxy ? ' via tunnel eller proxy' : '', ' · din adress: ', j.you),
+    !j.https && h('p', { class: 'note' }, 'Över okrypterad HTTP ska panelen bara användas i hemnätet eller över VPN. Öppna inte porten direkt i routern.'),
+    h('label', null, 'Tvåstegsinloggning'), box,
+    h('label', null, 'Nå servern utifrån'),
+    h('p', { class: 'note' }, 'Enklast och säkrast är Tailscale: installera det på servern och på din telefon/dator, så når du panelen på serverns Tailscale-adress var du än är, utan att något öppnas mot internet. ',
+      'Vill du ha en vanlig https-adress (t.ex. server.dindomän.se) fungerar Cloudflare Tunnel: peka en adress mot http://localhost:8787 och en till mot spelhallens port, och ange den senare här nedanför. ',
+      'Egen HTTPS direkt i programmet: lägg cert.pem och key.pem i mappen data/tls och starta om.'),
+    h('label', null, 'Spelhallens egen https-adress (bara vid tunnel)'), arc,
+    h('label', null, 'Senaste inloggningar'),
+    h('pre', { class: 'log', style: 'height:120px;margin-top:0' }, j.recent.length ? j.recent.map(l => { const [t, ip, what] = l.split('\t'); return `${new Date(t).toLocaleString('sv-SE')}  ${what}  (${ip})`; }).join('\n') : 'Inga än.'),
+    err, h('div', { class: 'row' }, h('button', { class: 'btn pri', onclick: async () => { try { await call('POST', '/api/settings', { arcadeUrl: arc.value }); closeModal(); } catch (v) { err.textContent = v.message; } } }, 'Spara'))));
+  draw2fa();
+}
 $('bSet').onclick = () => {
   if (!S) return; editing = true;
   const sc = h('input', { class: 'in', placeholder: 'sökväg till steamcmd' + (S.platform === 'win' ? '.exe' : '.sh') }), dir = h('input', { class: 'in' }), err = h('div', { class: 'err' });
@@ -333,7 +366,7 @@ $('bSet').onclick = () => {
       try { await act('POST', '/api/steamcmd/install'); toast('Hämtar SteamCMD från Valve …'); closeModal(); } catch { } } }, 'Hämta och installera SteamCMD')),
     h('label', null, 'Eller egen sökväg till SteamCMD'), sc,
     h('label', null, 'Mapp där spelservrar installeras'), dir,
-    h('p', { class: 'note' }, 'Panelen går över vanlig HTTP. Använd den i hemnätet eller över VPN (t.ex. Tailscale eller WireGuard), och öppna inte port 8787 i routern mot internet.'),
+    h('div', { class: 'row' }, h('button', { class: 'btn', onclick: () => openSecurity().catch(e => toast(e.message)) }, 'Säkerhet och fjärråtkomst …')),
     err, h('div', { class: 'row' }, h('button', { class: 'btn pri', onclick: async () => {
       try { await call('POST', '/api/settings', { steamcmd: sc.value || undefined, serversDir: dir.value }); closeModal(); poll(); } catch (v) { err.textContent = v.message; } } }, 'Spara'))));
 };
