@@ -4,6 +4,8 @@
 
 Det här repot innehåller två olika program som delar utseende men inte kod.
 
+**Hur man gör allt, steg för steg, står i [INFO.md](INFO.md).**
+
 | | V.I.C.T.O.R. (skrivbord och telefon) | V.I.C.T.O.R. Server |
 |---|---|---|
 | Vad det är | Startskärm med partikelglober, appar, widgets, påminnelser och brainstorm | Kontrollpanel för en dedikerad serverdator |
