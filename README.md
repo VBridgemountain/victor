@@ -38,3 +38,16 @@ Ligger i [`server/`](server/) och är ett eget program. Det hör inte ihop med s
 - **Säkerhet:** lösenord, tvåstegsinloggning och stöd för åtkomst via nätet
 
 Installation och användning står i [server/README.md](server/README.md).
+
+### Microsoft 365 admin (widget, bara på dator)
+
+Genvägarna fungerar direkt. För live-data (tjänststatus, licenser, antal användare och valfritt Windows 365 Cloud PC) krävs en
+egen appregistrering i din Microsoft-miljö:
+
+1. Entra admin center → Appregistreringar → Ny registrering (en klient).
+2. Plattform **Ensidesprogram (SPA)** med omdirigerings-URI `https://vbridgemountain.github.io/victor/desktop/`.
+3. API-behörigheter → Microsoft Graph → Delegerade: `ServiceHealth.Read.All`, `Organization.Read.All`, `User.Read.All`
+   (och `CloudPC.Read.All` för Cloud PC) → Bevilja administratörsmedgivande.
+4. Kopiera Program-ID (client) och Katalog-ID (tenant) till widgeten och logga in.
+
+Bara läsrättigheter används. Inloggningen sparas i webbläsaren, skild från appens övriga data, och följer inte med vid export.

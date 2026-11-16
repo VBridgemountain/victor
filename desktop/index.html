@@ -357,6 +357,8 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
    ===================================================================== */
 const KEY = 'jarvis-desktop-v1';
 // Finns bara när sidan körs inne i Android-launchern: brygga till telefonens appar (se android/MainActivity.java)
+// Microsoft-inloggningen (widgeten Microsoft 365 admin) öppnas i ett eget fönster och kommer tillbaka hit med ett svar i adressen.
+if (window.opener && /[?&]state=m365-/.test(location.search)) { try { window.opener.postMessage({ m365: location.search }, location.origin); } catch { } window.close(); }
 const NATIVE = window.VictorNative || null;
 const mkApp = (icon, name, url) => ({ id: uid(), icon, name, url });
 const newGlobe = (name, color, apps, ideas) => ({ id: uid(), name: name || 'Ny glob', color: color || '', apps: apps || [], ideas: (ideas || []).map(t => typeof t === 'string' ? { id: uid(), text: t, children: [] } : t) });
@@ -1331,13 +1333,114 @@ const TYPES = {
       load(); let n = 0; return () => { if (++n % 5 === 0) load(); };   // var femte sekund
     } },
 
-  m365: { title: 'Microsoft 365 admin', icon: '🛡️', desc: 'Genvägar till adminportalerna', desktopOnly: true,
+  // Microsoft 365: genvägar till adminportalerna, och live-data via Microsoft Graph efter inloggning med ett eget app-ID.
+  // Bara läsrättigheter begärs. Inloggningen sparas i webbläsaren, skild från resten av appens data (följer inte med vid export).
+  m365: { title: 'Microsoft 365 admin', icon: '🛡️', desc: 'Tjänststatus, licenser, användare och genvägar', desktopOnly: true,
     render(w, body) {
+      const d = w.data, TK = 'victor-m365-' + w.id, REDIR = location.origin + location.pathname.replace(/index\.html$/, '');
+      const SCOPES = () => ['offline_access', 'User.Read', 'ServiceHealth.Read.All', 'Organization.Read.All', 'User.Read.All'].concat(d.cloudpc ? ['CloudPC.Read.All'] : []).join(' ');
       const L = [['Admincenter', 'https://admin.microsoft.com'], ['Tjänststatus', 'https://admin.microsoft.com/#/servicehealth'], ['Användare', 'https://admin.microsoft.com/#/users'],
         ['Licenser', 'https://admin.microsoft.com/#/licenses'], ['Entra ID', 'https://entra.microsoft.com'], ['Intune', 'https://intune.microsoft.com'],
         ['Windows 365', 'https://windows365.microsoft.com'], ['Exchange', 'https://admin.exchange.microsoft.com'], ['Teams', 'https://admin.teams.microsoft.com'],
         ['Defender', 'https://security.microsoft.com'], ['Purview', 'https://purview.microsoft.com'], ['Azure', 'https://portal.azure.com']];
-      body.append(el('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:7px' }, L.map(([t, u]) => el('button', { class: 'btn', text: t, title: u, style: 'text-align:left', onclick: () => openUrl(u) }))));
+      const links = () => el('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:7px' }, L.map(([t, u]) => el('button', { class: 'btn', text: t, title: u, style: 'text-align:left', onclick: () => openUrl(u) })));
+      const tok = () => { try { return JSON.parse(localStorage.getItem(TK)) || null; } catch { return null; } };
+      const setTok = t => { try { t ? localStorage.setItem(TK, JSON.stringify(t)) : localStorage.removeItem(TK); } catch { } };
+      const b64 = buf => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+      const authBase = () => `https://login.microsoftonline.com/${encodeURIComponent(d.tenant)}/oauth2/v2.0/`;
+      async function token(params) {   // byter en inloggningskod eller förnyelsenyckel mot en åtkomstnyckel
+        const r = await fetch(authBase() + 'token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams(Object.assign({ client_id: d.client, scope: SCOPES() }, params)) });
+        const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error((j.error_description || j.error || 'Inloggningen misslyckades.').split('\r\n')[0]);
+        setTok({ access: j.access_token, refresh: j.refresh_token || (tok() || {}).refresh, exp: Date.now() + (j.expires_in - 120) * 1000 }); return j.access_token;
+      }
+      async function signIn() {   // inloggning hos Microsoft i ett eget fönster (auktoriseringskod med PKCE, ingen hemlighet i appen)
+        const ver = b64(crypto.getRandomValues(new Uint8Array(48))), st = 'm365-' + b64(crypto.getRandomValues(new Uint8Array(12)));
+        const ch = b64(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(ver)));
+        const pop = window.open(authBase() + 'authorize?' + new URLSearchParams({ client_id: d.client, response_type: 'code', redirect_uri: REDIR, response_mode: 'query',
+          scope: SCOPES(), state: st, code_challenge: ch, code_challenge_method: 'S256', prompt: 'select_account' }), 'm365', 'width=520,height=680');
+        if (!pop) throw new Error('Inloggningsfönstret blockerades. Tillåt popup-fönster för sidan och försök igen.');
+        const q = await new Promise((ok, fail) => {
+          const done = v => { removeEventListener('message', on); clearInterval(iv); v instanceof Error ? fail(v) : ok(v); };
+          const on = e => { if (e.origin === location.origin && e.data && e.data.m365) done(new URLSearchParams(e.data.m365)); };
+          const iv = setInterval(() => { if (pop.closed) setTimeout(() => done(new Error('Inloggningen avbröts.')), 400); }, 700);
+          addEventListener('message', on);
+        });
+        if (q.get('state') !== st) throw new Error('Svaret från Microsoft stämde inte. Försök igen.');
+        if (q.get('error')) throw new Error((q.get('error_description') || q.get('error')).split('\r\n')[0]);
+        await token({ grant_type: 'authorization_code', code: q.get('code'), redirect_uri: REDIR, code_verifier: ver });
+      }
+      async function access() { const t = tok(); if (!t) throw new Error('login');
+        if (t.access && t.exp > Date.now()) return t.access;
+        if (!t.refresh) { setTok(null); throw new Error('login'); }
+        try { return await token({ grant_type: 'refresh_token', refresh_token: t.refresh }); } catch { setTok(null); throw new Error('login'); } }
+      async function graph(path, text) {
+        const r = await fetch('https://graph.microsoft.com/v1.0' + path, { headers: { Authorization: 'Bearer ' + await access(), ConsistencyLevel: 'eventual' } });
+        if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error((j.error && j.error.message) || 'HTTP ' + r.status); }
+        return text ? r.text() : r.json();
+      }
+      const setup = msg => {
+        body.textContent = '';
+        const t = el('input', { class: 'in', placeholder: 'Katalog-ID (tenant) eller domän', 'aria-label': 'Katalog-ID', value: d.tenant || '' }),
+              c = el('input', { class: 'in', placeholder: 'Program-ID (client)', 'aria-label': 'Program-ID', value: d.client || '', style: 'margin-top:7px' }),
+              cp = el('input', { type: 'checkbox', class: 'chk', checked: !!d.cloudpc });
+        body.append(msg ? el('div', { style: 'color:#ff5a4d;margin-bottom:8px;font-size:12.5px', text: msg }) : null,
+          el('div', { class: 'muted', style: 'font-size:12.5px;line-height:1.45;margin-bottom:9px' },
+            'För live-data behövs en egen appregistrering i din Microsoft-miljö: Entra → Appregistreringar → Ny registrering. Välj plattformen ',
+            el('b', { text: 'Ensidesprogram (SPA)' }), ' med omdirigerings-URI:', el('div', { class: 'mono', style: 'user-select:all;color:#fff;margin:5px 0;overflow-wrap:anywhere', text: REDIR }),
+            'Lägg till delegerade Graph-behörigheter ServiceHealth.Read.All, Organization.Read.All och User.Read.All (plus CloudPC.Read.All för Cloud PC) och bevilja administratörsmedgivande.'),
+          el('form', { onsubmit: e => { e.preventDefault(); d.tenant = t.value.trim(); d.client = c.value.trim(); d.cloudpc = cp.checked; setTok(null); save(); refresh('m365'); } },
+            t, c, el('label', { class: 'row', style: 'cursor:pointer;margin-top:8px;align-items:center' }, cp, 'Visa Windows 365 Cloud PC'),
+            el('div', { class: 'row', style: 'margin-top:9px' }, el('button', { class: 'btn', text: 'Spara' }),
+              d.tenant ? el('button', { class: 'btn', type: 'button', text: 'Avbryt', onclick: () => refresh('m365') }) : null)),
+          el('div', { style: 'margin-top:12px' }), links());
+      };
+      if (!d.tenant || !d.client) {   // inte kopplad: genvägarna fungerar ändå
+        body.append(links(), el('div', { class: 'row', style: 'margin-top:10px' }, el('button', { class: 'btn', text: 'Koppla live-data …', onclick: () => setup() })));
+        return;
+      }
+      const out = el('div', { class: 'muted', text: 'Hämtar…' }); body.append(out);
+      const ST = { serviceOperational: null, serviceRestored: null, resolved: null, falsePositive: null, postIncidentReviewPublished: null,
+        investigating: 'undersöks', serviceDegradation: 'försämrad', serviceInterruption: 'avbrott', restoringService: 'återställs', extendedRecovery: 'utdragen återställning',
+        verifyingService: 'verifieras', investigationSuspended: 'utredning pausad', mitigated: 'åtgärdad, följs upp', confirmed: 'bekräftat problem', reported: 'rapporterat' };
+      const SKU = { SPB: 'Microsoft 365 Business Premium', O365_BUSINESS_PREMIUM: 'Microsoft 365 Business Standard', O365_BUSINESS_ESSENTIALS: 'Microsoft 365 Business Basic',
+        O365_BUSINESS: 'Microsoft 365 Apps for business', SPE_E3: 'Microsoft 365 E3', SPE_E5: 'Microsoft 365 E5', ENTERPRISEPACK: 'Office 365 E3', ENTERPRISEPREMIUM: 'Office 365 E5',
+        STANDARDPACK: 'Office 365 E1', EXCHANGESTANDARD: 'Exchange Online (Plan 1)', FLOW_FREE: 'Power Automate Free', POWER_BI_STANDARD: 'Power BI (gratis)', TEAMS_EXPLORATORY: 'Teams Exploratory',
+        AAD_PREMIUM: 'Entra ID P1', AAD_PREMIUM_P2: 'Entra ID P2', EMS: 'Enterprise Mobility + Security E3', INTUNE_A: 'Intune Plan 1', VISIOCLIENT: 'Visio Plan 2', PROJECTPROFESSIONAL: 'Project Plan 3' };
+      const OKC = '#3dffa0', WARN = '#ffc24d', BAD = '#ff5a4d';
+      const dot = c => el('span', { style: `display:inline-block;width:9px;height:9px;border-radius:50%;background:${c};box-shadow:0 0 8px ${c};flex:none` });
+      const head = t => el('div', { class: 'muted mono', style: 'font-size:10px;letter-spacing:.16em;margin:11px 0 4px', text: t });
+      const foot = () => [el('div', { class: 'row', style: 'margin-top:11px;flex-wrap:wrap' }, el('button', { class: 'btn', text: 'Uppdatera', onclick: () => load() }),
+        el('button', { class: 'btn', text: 'Genvägar', onclick: e => { const g = e.target.parentNode.nextSibling; g.style.display = g.style.display ? '' : 'none'; } }),
+        tok() ? el('button', { class: 'btn', text: 'Logga ut', onclick: () => { setTok(null); load(); } }) : null,
+        el('button', { class: 'btn', text: '⚙', 'aria-label': 'Ändra koppling', onclick: () => setup() })), el('div', { style: 'display:none;margin-top:9px' }, links())];
+      const show = (...kids) => { out.className = ''; out.textContent = ''; out.append(...kids.flat(3).filter(x => x != null)); };
+      async function load() {
+        if (!tok()) return show(el('div', { class: 'muted', style: 'margin-bottom:9px', text: 'Logga in med ett administratörskonto för att se tjänststatus, licenser och användare.' }),
+          el('button', { class: 'btn on', text: 'Logga in hos Microsoft', onclick: async e => { e.target.disabled = true; try { await signIn(); load(); } catch (x) { e.target.disabled = false; toast('MICROSOFT 365', x.message, true); } } }), foot());
+        try {
+          const part = pr => pr.then(v => ({ v }), e => { if (e.message === 'login') throw e; return { e: e.message }; });   // en del får misslyckas utan att resten faller
+          const [me, health, skus, users, pcs] = await Promise.all([part(graph('/me?$select=displayName,userPrincipalName')), part(graph('/admin/serviceAnnouncement/healthOverviews')),
+            part(graph('/subscribedSkus')), part(graph('/users/$count', true)), d.cloudpc ? part(graph('/deviceManagement/virtualEndpoint/cloudPCs?$select=displayName,status,userPrincipalName')) : { skip: 1 }]);
+          const bad = health.v ? health.v.value.filter(x => ST[x.status] !== null) : [], lic = skus.v ? skus.v.value.filter(x => x.capabilityStatus !== 'Deleted' && x.prepaidUnits && x.prepaidUnits.enabled < 9000) : [];
+          const err = t => el('div', { class: 'muted', style: 'font-size:12px', text: 'Kunde inte hämtas: ' + t });
+          show(
+            el('div', { class: 'row', style: 'align-items:center;gap:8px' }, dot(health.e ? WARN : bad.length ? BAD : OKC),
+              el('b', { class: 'grow', text: health.e ? 'Tjänststatus saknas' : bad.length ? `${bad.length} tjänst${bad.length > 1 ? 'er' : ''} med problem` : 'Alla tjänster fungerar' })),
+            health.e ? err(health.e) : bad.map(x => el('div', { style: `margin-top:6px;padding:5px 8px;border-left:2px solid ${BAD};background:rgba(255,255,255,.04);font-size:12.5px`, text: `${x.service}: ${ST[x.status] || x.status}` })),
+            head('ANVÄNDARE'), users.e ? err(users.e) : el('div', { class: 'kv' }, el('span', { text: 'Konton i katalogen' }), el('span', { text: users.v })),
+            head('LICENSER'), skus.e ? err(skus.e) : lic.length ? el('div', { style: 'max-height:170px;overflow:auto' }, lic.sort((a, b) => b.consumedUnits - a.consumedUnits).map(x => {
+              const tot = x.prepaidUnits.enabled, free = tot - x.consumedUnits;
+              return [el('div', { class: 'kv' }, el('span', { text: SKU[x.skuPartNumber] || x.skuPartNumber, title: x.skuPartNumber, style: 'text-transform:none;letter-spacing:0;white-space:normal' }),
+                el('span', { text: `${x.consumedUnits} / ${tot}`, style: free <= 0 ? 'color:' + BAD : free <= 1 ? 'color:' + WARN : '' })),
+                el('div', { class: 'bar' }, el('i', { style: `width:${tot ? clamp(x.consumedUnits / tot * 100, 0, 100) : 0}%` }))]; })) : el('div', { class: 'muted', text: 'Inga betalda licenser hittades.' }),
+            pcs.skip ? null : [head('WINDOWS 365 CLOUD PC'), pcs.e ? err(pcs.e) : pcs.v.value.length ? pcs.v.value.map(x => el('div', { class: 'row', style: 'align-items:center;gap:8px;padding:3px 0' },
+              dot(x.status === 'provisioned' ? OKC : /fail|error/i.test(x.status) ? BAD : WARN), el('span', { class: 'grow', text: x.displayName, title: x.userPrincipalName || '' }), el('span', { class: 'muted mono', text: x.status }))) : el('div', { class: 'muted', text: 'Inga Cloud PC.' })],
+            me.v ? el('div', { class: 'muted', style: 'font-size:11.5px;margin-top:10px', text: 'Inloggad som ' + (me.v.userPrincipalName || me.v.displayName) }) : null,
+            foot());
+        } catch (e) { if (e.message === 'login') return load(); show(el('div', { class: 'muted', text: 'Kunde inte hämta data: ' + e.message }), foot()); }
+      }
+      load(); let n = 0; return () => { if (++n % 300 === 0 && tok()) load(); };   // var femte minut
     } },
 
   timer: { title: 'Timer', icon: '⏱️', desc: 'Nedräkning med larm',
@@ -1368,7 +1471,8 @@ function mountWidget(w) {
   const body = el('div', { class: 'w-body' });
   const head = el('div', { class: 'w-head' }, el('span', { class: 'w-title', text: def.title }),
     el('button', { class: 'ib', text: '✕', 'aria-label': 'Ta bort widget ' + def.title, onclick: () => {
-      state.widgets = state.widgets.filter(x => x !== w); mounted.delete(w.id); node.remove(); save(); } }));
+      state.widgets = state.widgets.filter(x => x !== w); mounted.delete(w.id); node.remove(); save();
+      try { localStorage.removeItem('victor-m365-' + w.id); } catch { } } }));   // en sparad Microsoft-inloggning följer med widgeten ut
   const node = el('section', { class: 'widget', 'aria-label': def.title }, head, body);
   node.style.left = w.x + 'px'; node.style.top = w.y + 'px';
   node.addEventListener('pointerdown', () => node.style.zIndex = ++topZ);
