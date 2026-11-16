@@ -22,6 +22,7 @@ Filer i [`desktop/`](desktop/):
 - `manifest.webmanifest`, `sw.js`, `icon*` — gör att den går att installera och starta utan nät
 - `android/` — Android-skalet runt samma `index.html`; byggs med `desktop/android/build.ps1`
 - `victor.apk` — den byggda Android-appen
+- `helper/` — datorbryggan: valfritt hjälpprogram för Windows som låter appen visa och starta datorns program och se öppna fönster, se [desktop/helper/README.md](desktop/helper/README.md)
 
 `index.html` i repots rot skickar bara vidare till `desktop/`, så att den gamla adressen fortsätter fungera.
 

@@ -347,7 +347,7 @@ function el(tag, props, ...kids) {
     else if (k in e) e[k] = v;
     else e.setAttribute(k, v);
   }
-  for (const c of kids.flat()) if (c != null) e.append(c);
+  for (const c of kids.flat(Infinity)) if (c != null) e.append(c);
   return e;
 }
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -640,6 +640,20 @@ let gridScroll = 0, gridMax = 0, gridVel = 0, gridWheelAt = 0;
 const fib = (i, n) => { const y = 1 - (i + 0.5) * 2 / n, r = Math.sqrt(1 - y * y), th = i * Math.PI * (3 - Math.sqrt(5));
   return [Math.cos(th) * r, y, Math.sin(th) * r]; };
 const MB = []; for (let i = 0; i < 520; i++) MB.push(...fib(i, 520));   // punkter för miniglober
+// Datorbryggan: ett litet hjälpprogram på Windows-datorn (desktop/helper) som låter sidan se installerade program,
+// starta dem och visa öppna fönster. Den svarar bara på den egna datorn och kräver kopplingskoden.
+const HELPER = 'http://127.0.0.1:8770';
+let helperOk = false;
+const hTok = () => (!NATIVE && state.helper && state.helper.token) || '';
+async function helper(path, data) {
+  const r = await fetch(HELPER + path, { method: data ? 'POST' : 'GET', cache: 'no-store', body: data ? JSON.stringify(data) : undefined,
+    headers: Object.assign({ Authorization: 'Bearer ' + hTok() }, data ? { 'Content-Type': 'application/json' } : {}) });
+  const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.error || 'Datorbryggan svarade inte.');
+  return j;
+}
+const hIcon = key => `${HELPER}/icon?k=${encodeURIComponent(key)}&t=${encodeURIComponent(hTok())}`;
+const progIcon = id => hIcon('shell:AppsFolder\\' + id);
+async function helperConnect() { helperOk = false; if (!hTok()) return false; try { await helper('/api/ping'); helperOk = true; } catch { } return helperOk; }
 function openUrl(url) {
   url = (url || '').trim();
   if (!url || /^\s*javascript:/i.test(url)) return;
@@ -647,7 +661,8 @@ function openUrl(url) {
   else if (/^[a-z][a-z0-9+.-]*:/i.test(url)) location.href = url;       // protokoll: spotify:, ms-settings: …
   else window.open('https://' + url, '_blank', 'noopener');
 }
-function openApp(a) {   // en app från telefonen startas via launchern, allt annat är en länk
+function openApp(a) {   // en app från telefonen startas via launchern, ett program på datorn via bryggan, allt annat är en länk
+  if (a.prog) { helper('/api/launch', { id: a.prog }).catch(e => toast('PROGRAM', e instanceof TypeError ? 'Datorbryggan är inte igång, så ' + a.name + ' kunde inte startas.' : e.message)); return; }
   if (a.pkg && NATIVE) { if (!NATIVE.launch(a.pkg)) toast('APP', a.name + ' gick inte att starta.'); }
   else openUrl(a.url);
 }
@@ -686,6 +701,8 @@ function buildScene() {
       oncontextmenu: e => { e.preventDefault(); openApps(); },
       onpointerenter: () => hoverApp = true, onpointerleave: () => hoverApp = false },
       a.pkg && NATIVE ? el('span', { class: 'ico' }, el('img', { src: '/icon/' + a.pkg, alt: '', draggable: false }))
+      : a.prog && hTok() ? el('span', { class: 'ico' }, el('img', { src: progIcon(a.prog), alt: '', draggable: false,
+          onerror: e => e.target.replaceWith((a.name || '?')[0].toUpperCase()) }))
                       : el('span', { class: 'ico', text: a.icon || (a.name || '?')[0].toUpperCase() }),
       el('span', { class: 'lbl', text: a.name }));
     appsEl.append(node);
@@ -1292,6 +1309,37 @@ const TYPES = {
       load(); tick(); let n = 0; return () => { tick(); if (++n % 600 === 0) load(); };   // var tionde minut
     } },
 
+  running: { title: 'Öppna program', icon: '🪟', desc: 'Vilka program som är igång på datorn', desktopOnly: true,
+    render(w, body) {
+      const out = el('div', { class: 'muted', text: 'Läser…' }); body.append(out);
+      let sig = null;
+      async function load() {
+        if (!hTok()) { if (sig === 'setup') return; sig = 'setup'; out.className = ''; out.textContent = '';
+          return out.append(el('div', { class: 'muted', style: 'margin-bottom:9px', text: 'Kräver datorbryggan, ett litet hjälpprogram på datorn.' }), el('button', { class: 'btn', text: 'Koppla datorbryggan', onclick: () => openHelperSetup() })); }
+        let list; try { list = (await helper('/api/windows')).windows; helperOk = true; }
+        catch { sig = null; out.className = 'muted'; out.textContent = 'Datorbryggan svarar inte. Starta den på datorn.'; return; }
+        const s = JSON.stringify(list.map(x => [x.pid, x.title, Math.round(x.mem / 5e7)])); if (s === sig) return; sig = s;
+        out.className = ''; out.textContent = '';
+        out.append(el('div', { class: 'muted mono', style: 'font-size:10px;letter-spacing:.16em;margin-bottom:5px', text: list.length + ' ÖPPNA FÖNSTER · TRYCK FÖR ATT VISA' }),
+          el('div', { style: 'max-height:260px;overflow:auto' }, list.map(p => el('div', { class: 'row', role: 'button', tabIndex: 0, title: p.title + ' (' + p.name + ')',
+            style: 'align-items:center;gap:8px;padding:4px 2px;cursor:pointer', onclick: () => helper('/api/focus', { pid: p.pid }).catch(e => toast('PROGRAM', e.message)) },
+            el('img', { src: hIcon(p.icon), alt: '', style: 'width:20px;height:20px;flex:none',
+              onerror: e => { const i = e.target; if (i._r) i.style.visibility = 'hidden'; else { i._r = 1; setTimeout(() => { i.src = hIcon(p.icon) + '&r=1'; }, 7000); } } }),   // ikonen kan vara på väg: ett nytt försök
+            el('span', { class: 'grow', style: 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap', text: p.title }),
+            el('span', { class: 'muted mono', style: 'font-size:11px;white-space:nowrap', text: Math.round(p.mem / 1048576) + ' MB' })))));
+      }
+      load(); let n = 0; return () => { if (++n % 5 === 0) load(); };   // var femte sekund
+    } },
+
+  m365: { title: 'Microsoft 365 admin', icon: '🛡️', desc: 'Genvägar till adminportalerna', desktopOnly: true,
+    render(w, body) {
+      const L = [['Admincenter', 'https://admin.microsoft.com'], ['Tjänststatus', 'https://admin.microsoft.com/#/servicehealth'], ['Användare', 'https://admin.microsoft.com/#/users'],
+        ['Licenser', 'https://admin.microsoft.com/#/licenses'], ['Entra ID', 'https://entra.microsoft.com'], ['Intune', 'https://intune.microsoft.com'],
+        ['Windows 365', 'https://windows365.microsoft.com'], ['Exchange', 'https://admin.exchange.microsoft.com'], ['Teams', 'https://admin.teams.microsoft.com'],
+        ['Defender', 'https://security.microsoft.com'], ['Purview', 'https://purview.microsoft.com'], ['Azure', 'https://portal.azure.com']];
+      body.append(el('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:7px' }, L.map(([t, u]) => el('button', { class: 'btn', text: t, title: u, style: 'text-align:left', onclick: () => openUrl(u) }))));
+    } },
+
   timer: { title: 'Timer', icon: '⏱️', desc: 'Nedräkning med larm',
     render(w, body) {
       const d = w.data; d.min = d.min || 25;
@@ -1391,7 +1439,7 @@ function buildDock() {
 }
 $('#bWidget').onclick = () => openModal('Lägg till widget', el('div', {},
   el('div', { class: 'wgrid' },
-    Object.entries(TYPES).map(([k, t]) => el('button', { class: 'wpick', onclick: () => { addWidget(k); closeModal(); } },
+    Object.entries(TYPES).filter(([, t]) => !(NATIVE && t.desktopOnly)).map(([k, t]) => el('button', { class: 'wpick', onclick: () => { addWidget(k); closeModal(); } },
       el('span', { class: 'e', text: t.icon }), el('b', { text: t.title }), el('span', { class: 'muted', text: t.desc })))),
   el('div', { class: 'field', style: 'margin:18px 0 0' }, el('span', { class: 'flabel', text: 'Snabbknappar under globen' }),
     el('div', { class: 'gtabs', style: 'margin:0' }, Object.entries(DOCK).map(([k, [ico, name]]) =>
@@ -1405,6 +1453,47 @@ const hidePkg = p => { state.hidden = state.hidden || []; if (!state.hidden.incl
 const unhidePkg = p => { state.hidden = (state.hidden || []).filter(x => x !== p); };
 const globeOf = pkg => state.globes.find(g => g.apps.some(a => a.pkg === pkg));
 function nativeApps() { try { return JSON.parse(NATIVE.getApps()).sort((a, b) => a.label.localeCompare(b.label, 'sv')); } catch { return []; } }
+// Datorns program (via datorbryggan): tryck för att lägga i globen, tryck igen för att ta bort
+async function openProgPicker(gi) {
+  if (!(await helperConnect())) return openHelperSetup(() => openProgPicker(gi));
+  let all; try { all = (await helper('/api/apps')).apps; } catch (e) { return toast('PROGRAM', e.message); }
+  const g = state.globes[gi], list = el('ul', { class: 'list plist' }), where = id => state.globes.find(x => x.apps.some(a => a.prog === id));
+  const q = el('input', { class: 'in', placeholder: 'Sök bland datorns program…', 'aria-label': 'Sök program', oninput: () => draw() });
+  const toggle = a => { const cur = where(a.id);
+    if (cur) cur.apps = cur.apps.filter(x => x.prog !== a.id);
+    if (cur !== g) g.apps.push({ id: uid(), icon: '', name: a.name, url: '', prog: a.id });
+    save(); buildScene(); draw(); };
+  function draw() {
+    const t = q.value.trim().toLowerCase(), hits = all.filter(a => a.name.toLowerCase().includes(t)), keep = list.scrollTop;
+    list.textContent = '';
+    if (!hits.length) list.append(el('li', { class: 'muted', text: 'Inga program matchar.' }));
+    for (const a of hits) { const cur = where(a.id), here = cur === g;
+      list.append(el('li', { class: here ? 'sel' : '', role: 'button', tabIndex: 0, 'aria-pressed': here, onclick: () => toggle(a), onkeydown: e => { if (e.key === 'Enter') toggle(a); } },
+        el('img', { src: progIcon(a.id), alt: '', loading: 'lazy', onerror: e => e.target.style.visibility = 'hidden' }), el('span', { class: 'grow', text: a.name }),
+        el('span', { class: 'muted', text: here ? '✓ i globen' : cur ? cur.name : 'inte tillagd' }))); }
+    list.scrollTop = keep;
+  }
+  draw();
+  openModal('Program i ' + g.name, el('div', {}, el('p', { class: 'muted', style: 'margin-top:0', text: 'Tryck på ett program för att lägga det i globen. Tryck igen för att ta bort det.' }), q, list,
+    el('div', { class: 'row', style: 'margin-top:12px' }, el('button', { class: 'btn', text: 'Klar', onclick: () => openApps(gi) }))));
+  q.focus();
+}
+function openHelperSetup(then) {
+  const t = el('input', { class: 'in', placeholder: 'Kopplingskod', 'aria-label': 'Kopplingskod', value: hTok() }), msg = el('div', { class: 'muted', style: 'min-height:20px;margin-top:8px' });
+  const step = (n, ...kids) => el('div', { class: 'row', style: 'align-items:flex-start;gap:10px;margin:7px 0' }, el('b', { class: 'mono', style: 'color:var(--accent)', text: n }), el('div', { class: 'grow' }, ...kids));
+  openModal('Datorbrygga', el('div', {},
+    el('p', { style: 'margin-top:0', text: 'En webbsida kan inte se datorns program själv. Datorbryggan är ett litet hjälpprogram som körs på din Windows-dator och låter V.I.C.T.O.R. visa installerade program, starta dem och se vilka fönster som är öppna.' }),
+    step('1', 'Installera Node.js om du inte har det (nodejs.org).'),
+    step('2', 'Hämta mappen ', el('a', { class: 'lnk', href: 'https://github.com/VBridgemountain/victor/tree/main/desktop/helper', target: '_blank', rel: 'noopener', text: 'desktop/helper' }), ' och dubbelklicka på starta-brygga.cmd.'),
+    step('3', 'Öppna ', el('a', { class: 'lnk', href: HELPER, target: '_blank', rel: 'noopener', text: '127.0.0.1:8770' }), ' på datorn, kopiera kopplingskoden och klistra in den här.'),
+    el('form', { class: 'row', style: 'margin-top:12px', onsubmit: async e => { e.preventDefault(); state.helper = { token: t.value.trim() }; save();
+        msg.textContent = 'Ansluter…';
+        if (await helperConnect()) { buildScene(); refresh('running'); toast('DATORBRYGGA', 'Ansluten.'); if (then) then(); else closeModal(); }
+        else msg.textContent = 'Ingen kontakt. Kontrollera att bryggan är igång på den här datorn och att koden stämmer.'; } },
+      t, el('button', { class: 'btn', text: 'Anslut' })), msg,
+    el('p', { class: 'muted', text: 'Bryggan svarar bara den här datorn, och bara V.I.C.T.O.R. med rätt kod. Den kan starta program från Start-menyn och lyfta fram fönster, inget annat.' })));
+  t.focus();
+}
 function openPicker(gi) {
   const g = state.globes[gi], all = nativeApps();
   const list = el('ul', { class: 'list plist' });
@@ -1461,7 +1550,8 @@ function openApps(gi) {
     wrap.append(el('span', { class: 'flabel', text: 'Appar i globen' }));
     if (NATIVE) wrap.append(el('button', { class: 'btn on', style: 'margin-bottom:12px', text: '+ Lägg till appar från telefonen',
       onclick: () => openPicker(gi) }));
-    else wrap.append(el('p', { class: 'muted', style: 'margin-top:0', text:
+    else wrap.append(el('button', { class: 'btn on', style: 'margin-bottom:12px', text: '+ Lägg till program från datorn', onclick: () => openProgPicker(gi) }),
+      el('p', { class: 'muted', style: 'margin-top:0', text:
       'Webbadresser öppnas i ny flik. Installerade program startas med sitt protokoll, t.ex. spotify:  vscode:  ms-settings:  calculator:  steam://  discord://' }));
     g.apps.forEach((a, i) => {
       const f = (key, ph) => el('input', { class: 'in', value: a[key] || '', placeholder: ph, 'aria-label': ph,
@@ -1470,6 +1560,7 @@ function openApps(gi) {
         if (a.pkg) hidePkg(a.pkg); g.apps.splice(i, 1); changed(); draw(); } });
       wrap.append(a.pkg && NATIVE   // telefonapp: ikon och namn räcker
         ? el('div', { class: 'arow' }, el('img', { class: 'aimg', src: '/icon/' + a.pkg, alt: '' }), f('name', 'Namn'), el('span', { class: 'muted', text: 'Telefonapp' }), del)
+        : a.prog ? el('div', { class: 'arow' }, el('img', { class: 'aimg', src: progIcon(a.prog), alt: '', onerror: e => e.target.style.visibility = 'hidden' }), f('name', 'Namn'), el('span', { class: 'muted', text: 'Program' }), del)
         : el('div', { class: 'arow' }, f('icon', 'Ikon'), f('name', 'Namn'), f('url', 'Adress eller protokoll'), del));
     });
     wrap.append(el('button', { class: 'btn', style: 'margin-top:6px', text: NATIVE ? '+ Lägg till webblänk' : '+ Lägg till app', onclick: () => {
@@ -1575,6 +1666,9 @@ $('#bSettings').onclick = () => {
     el('div', { class: 'field' }, el('label', { class: 'row', style: 'cursor:pointer' },
       el('input', { type: 'checkbox', class: 'chk', checked: state.autoRotate, onchange: e => { state.autoRotate = e.target.checked; save(); } }),
       'Rotera globen automatiskt')),
+    NATIVE ? null : el('div', { class: 'field' }, el('span', { class: 'flabel', text: 'Datorbrygga' }),
+      el('div', { class: 'row', style: 'align-items:center' }, el('button', { class: 'btn', text: hTok() ? 'Ändra koppling' : 'Koppla datorns program', onclick: () => openHelperSetup() }),
+        el('span', { class: 'muted', text: helperOk ? 'Ansluten' : hTok() ? 'Ingen kontakt just nu' : 'Inte kopplad' }))),
     NATIVE ? el('div', { class: 'field' }, el('span', { class: 'flabel', text: 'Startskärm' }),
       el('button', { class: 'btn', text: 'Välj V.I.C.T.O.R. som startskärm', onclick: () => NATIVE.homeSettings() }))
     : el('div', { class: 'field' }, el('span', { class: 'flabel', text: 'Flytta till en annan enhet' }),
@@ -1607,6 +1701,7 @@ requestAnimationFrame(frame);
 
 // installerbar app: fungerar bara när sidan ligger på en webbadress (https), inte som lokal fil
 if (!NATIVE && 'serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js').catch(() => {});
+if (!NATIVE) helperConnect().then(ok => { if (ok) refresh('running'); });   // datorbryggan, om den är kopplad
 
 // första starten: hälsa välkommen och fråga vad användaren heter
 if (firstRun) {
