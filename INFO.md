@@ -54,6 +54,22 @@ De delar utseende men inte kod, och ingen av dem kräver den andra.
 
 **Appar i globerna** kan vara webbadresser, protokoll (t.ex. `spotify:`, `vscode:`, `ms-settings:`) eller datorns installerade program via datorbryggan (avsnitt 4).
 
+**Sortera och flytta appar:** i Glober, dra i ⠿ framför en app för att ändra ordning, eller släpp den på en glob i flikraden för att flytta den dit. Menyn "Flytta till…" på varje rad gör samma sak.
+
+**Ikoner för webbadresser:** lämnas ikonen tom hämtas webbplatsens egen ikon direkt från sajten. Tryck på ikonen i Glober för att välja en emoji eller en bildadress i stället.
+
+**Importera många länkar:** Glober → **Importera länkar från .json**. Välj en fil (på datorn) eller klistra in innehållet (fungerar även på telefonen). Varje adress blir en app. Filen kan vara:
+
+- en lista med adresser: `["https://github.com", "youtube.com"]`
+- en lista med appar: `[{"name": "GitHub", "url": "https://github.com", "icon": "🐙"}]`
+- grupper: `{"Jobb": [...], "Nöje": [...]}`
+- glober: `{"globes": [{"name": "Jobb", "color": "#3d8bff", "apps": [...]}]}`
+- Chromes bokmärkesfil (mapparna blir glober)
+
+Grupper kan bli egna glober (befintliga med samma namn fylls på) eller hamna i en vald glob. Adresser som redan finns hoppas över. Under "Hur filen ska se ut" finns ett exempel att ladda ner.
+
+**Byta namn på systemet:** Inställningar → Systemets namn och undertext. Visas uppe till vänster och i fliken. Namnet på den installerade appen och Android-ikonen ändras inte.
+
 **Brainstorm:** zooma in i en glob, skriv en idé, klicka på den för att gå in i den och lägga underidéer. Knappen Claude kopierar idéträdet och öppnar Claude för att utveckla det.
 
 **Data:** allt sparas i webbläsaren på den enheten. Flytta mellan enheter med Exportera/Importera under Inställningar. Dator och telefon delar inte data.
