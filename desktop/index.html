@@ -47,21 +47,22 @@ body.dragging #globe,body.dragging .app{cursor:grabbing}
 /* ---------- apps on the globe ---------- */
 #apps{position:fixed;inset:0;z-index:1;pointer-events:none}
 .app{
-  position:absolute;left:0;top:0;width:62px;pointer-events:auto;cursor:pointer;
+  position:absolute;left:0;top:0;width:max-content;min-width:62px;pointer-events:auto;cursor:pointer;
   display:flex;flex-direction:column;align-items:center;gap:5px;
   background:none;border:0;padding:0;will-change:transform,opacity;touch-action:none;
 }
 .app .ico{
-  width:56px;height:56px;border-radius:50%;display:grid;place-items:center;
+  width:56px;height:56px;border-radius:50%;display:grid;place-items:center;overflow:hidden;flex:none;
   font-size:25px;line-height:1;
   background:radial-gradient(circle at 50% 35%,rgba(var(--rgb),.28),rgba(2,6,11,.85) 70%);
   border:1px solid var(--line);
   box-shadow:0 0 14px rgba(var(--rgb),.25),inset 0 0 12px rgba(var(--rgb),.18);
   transition:box-shadow .2s,border-color .2s,transform .2s;
 }
-.app .ico img{width:40px;height:40px;border-radius:10px;pointer-events:none}
+.app .ico img{width:34px;height:34px;border-radius:8px;object-fit:contain;pointer-events:none}
 .app .lbl{
-  font:11px var(--mono);letter-spacing:.12em;text-transform:uppercase;white-space:nowrap;
+  font:11px/1.3 var(--mono);letter-spacing:.12em;text-transform:uppercase;max-width:136px;text-align:center;overflow-wrap:anywhere;
+  display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;
   color:var(--text);text-shadow:0 0 8px rgba(var(--rgb),.9),0 0 2px #000;
 }
 .app:hover .ico,.app.focus .ico,.app:focus-visible .ico{
@@ -240,7 +241,9 @@ input[type=range]{width:100%;accent-color:var(--accent)}
 .arow{display:grid;grid-template-columns:22px 52px 1fr 1.6fr 104px auto;gap:7px;margin-bottom:7px;align-items:center;background:var(--bg);transition:box-shadow .15s}
 .arow .ai{text-align:center;font-size:17px;padding:3px}
 .arow .wico{width:38px;height:38px;justify-self:center;display:grid;place-items:center;font-size:20px}
-.arow .wico img{width:34px;height:34px;border-radius:8px}
+.arow .wico{overflow:hidden;padding:0}
+.arow .wico img{width:28px;height:28px;border-radius:6px;object-fit:contain}
+.icopick{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}.icopick button{font-size:20px;width:40px;height:40px;padding:0}
 .grip{cursor:grab;touch-action:none;color:var(--dim);font-size:16px;line-height:1;text-align:center;user-select:none;padding:8px 0}
 .grip:hover{color:var(--accent)}
 .arow select.in{padding:5px 4px;font-size:12px}
@@ -280,6 +283,7 @@ body.hasdock #ovAdd{bottom:138px}
 #bDrawer{display:none}
 @media (hover:none){.list li .ib,.mnode .ib{opacity:1}}
 @media (max-width:760px){
+  .app .lbl{max-width:108px}
   #top{flex-wrap:wrap;gap:7px;padding:calc(10px + env(safe-area-inset-top)) 12px 0}
   #logo{flex:1 0 100%;font-size:15px}
   #greet,#bFull,.corner{display:none}
@@ -376,7 +380,7 @@ const mkApp = (icon, name, url) => ({ id: uid(), icon, name, url });
 const brand = () => (state.brand && state.brand.name) || 'V.I.C.T.O.R.';
 function applyBrand() {
   const b = state.brand || {}, logo = $('#logo'); logo.textContent = '';
-  logo.append(brand(), el('small', { text: b.sub != null ? b.sub : 'by NoirLab' }));
+  logo.append(brand(), el('small', { text: 'by NoirLab' }));
   logo.title = b.name ? '' : 'Visionary Interface for Creative Thinking, Organisation & Research';
   document.title = brand() + (b.name ? '' : ' — NoirLab');
 }
@@ -492,7 +496,7 @@ function resize() {
   ctx.setTransform(d, 0, 0, d, 0, 0);
 }
 addEventListener('resize', () => {
-  const oldW = W; resize();
+  const oldW = W; resize(); labelW = -1;
   // widgets på högra halvan följer med högerkanten när fönstret ändrar storlek
   if (isMobile()) return;   // på telefon ligger widgets i lådan och har ingen egen position
   for (const { w, node } of mounted.values()) if (w.x + node.offsetWidth / 2 > oldW / 2) w.x += W - oldW;
@@ -653,7 +657,7 @@ addEventListener('keydown', e => {
 const appsEl = $('#apps'), ideasEl = $('#ideas'), ovEl = $('#ov'), readout = $('#readout'), ideaBar = $('#ideaBar'),
       mindEl = $('#mind'), crumbs = $('#crumbs');
 const IDEA_R = 0.4;
-let appNodes = [], ideaNodes = [], ovNodes = [], ACT = null, level = -1;
+let appNodes = [], ideaNodes = [], ovNodes = [], ACT = null, level = -1, labelW = -1;
 // brainstorm: path = vägen av idéer man zoomat in genom, im = hur mycket mindmap-vyn syns (0–1)
 let path = [], mindNodes = [], mindTitle = null, im = 0, burst = 0, orbit = 0;
 // scrollning i apprutnätet inuti en glob
@@ -694,6 +698,7 @@ function webIcon(a, cls) {
     i.onerror = () => { if (++k < srcs.length) i.src = srcs[k]; else i.replaceWith(letter); }; i.src = srcs[0]; return i; };
   if (a.icon && /^(https?:\/\/|data:image\/)/i.test(a.icon)) box.append(img([a.icon]));
   else if (a.icon) box.textContent = a.icon;
+  else if (a.iconMode === 'letter' || state.siteIcons === false) box.textContent = letter;
   else { let o = null; try { if (/^https?:\/\//i.test(a.url)) o = new URL(a.url).origin; } catch { }
     if (o) box.append(img([o + '/apple-touch-icon.png', o + '/favicon.ico'])); else box.textContent = letter; }
   return box;
@@ -702,7 +707,7 @@ function buildScene() {
   state.globes.forEach(g => { g.apps = g.apps || []; g.ideas = g.ideas || []; });
   const g = G(); ACT = hexRgb(g.color);
   for (const L of [appsEl, ideasEl, mindEl]) ACT ? L.style.setProperty('--rgb', ACT.join(',')) : L.style.removeProperty('--rgb');
-  appsEl.textContent = ''; ideasEl.textContent = ''; ovEl.textContent = ''; appNodes = [];
+  appsEl.textContent = ''; ideasEl.textContent = ''; ovEl.textContent = ''; appNodes = []; labelW = -1;
   ideaNodes = g.ideas.map((it, i) => {
     const c = countDesc(it);
     const node = el('div', { class: 'idea', role: 'button', tabIndex: 0, title: 'Zooma in i idén', onpointerdown: onDown,
@@ -738,7 +743,7 @@ function buildScene() {
                       : webIcon(a, 'ico'),
       el('span', { class: 'lbl', text: a.name }));
     appsEl.append(node);
-    appNodes.push({ a, node, i, bx: bx0, by: y, bz: bz0 });
+    appNodes.push({ a, node, i, bx: bx0, by: y, bz: bz0, lbl: node.lastChild });
   });
   // sista rutan i rutnätet inuti globen: lägg till appar (syns bara i inuti-vyn)
   const add = el('button', { class: 'app add', title: 'Lägg till appar i globen', onpointerdown: onDown,
@@ -1037,7 +1042,8 @@ function frame(now) {
     if (mindTitle) mindTitle.style.transform = `translate(${CX.toFixed(1)}px,${CY.toFixed(1)}px) translate(-50%,-50%)`;
   }
   // inuti globen: apparna i rader, idéerna i ett fält under dem
-  const nA = appNodes.length, cell = W <= 760 ? 88 : 112, rowH = 100, cols = Math.max(1, Math.min(nA, Math.floor(Math.min(W - 80, 900) / cell)));
+  if (labelW < 0) labelW = appNodes.reduce((mx, n) => Math.max(mx, n.lbl ? n.lbl.offsetWidth : 0), 0);   // mäts en gång per uppbyggnad
+  const nA = appNodes.length, avail = W <= 760 ? W - 16 : Math.min(W - 80, 900), cell = clamp(labelW * 1.12 + 22, W <= 760 ? 88 : 112, W <= 760 ? avail / 2 : 190), rowH = 118, cols = Math.max(1, Math.min(nA, Math.floor(avail / cell)));
   const rows = Math.ceil(nA / cols), topMin = W <= 760 ? 128 : 96, viewBot = H - (W <= 760 ? 150 : 120);
   const gridTop = Math.max(topMin, H * 0.4 - rows * rowH / 2);
   // Får inte allt plats mellan menyn och idéfältet går rutnätet att scrolla (dra, eller mushjulet).
@@ -1682,9 +1688,10 @@ function openApps(gi) {
         NATIVE ? null : el('input', { type: 'color', value: g.color || state.theme, 'aria-label': 'Egen färg', onchange: e => setCol(e.target.value) }),
         el('button', { class: 'btn' + (g.color ? '' : ' on'), text: 'Följ tema', onclick: () => setCol('') }))));
     wrap.append(el('span', { class: 'flabel', text: 'Appar i globen' }));
-    if (NATIVE) wrap.append(el('button', { class: 'btn on', style: 'margin-bottom:12px', text: '+ Lägg till appar från telefonen',
-      onclick: () => openPicker(gi) }));
-    else wrap.append(el('button', { class: 'btn on', style: 'margin-bottom:12px', text: '+ Lägg till program från datorn', onclick: () => openProgPicker(gi) }),
+    if (NATIVE) wrap.append(el('div', { class: 'row', style: 'margin-bottom:12px;flex-wrap:wrap' }, el('button', { class: 'btn on', text: '+ Lägg till appar från telefonen', onclick: () => openPicker(gi) }),
+      el('button', { class: 'btn on', text: 'Importera länkar från .json', onclick: () => openImport(gi) })));
+    else wrap.append(el('div', { class: 'row', style: 'margin-bottom:12px;flex-wrap:wrap' }, el('button', { class: 'btn on', text: '+ Lägg till program från datorn', onclick: () => openProgPicker(gi) }),
+        el('button', { class: 'btn on', text: 'Importera länkar från .json', onclick: () => openImport(gi) })),
       el('p', { class: 'muted', style: 'margin-top:0', text:
       'Webbadresser öppnas i ny flik. Installerade program startas med sitt protokoll, t.ex. spotify:  vscode:  ms-settings:  calculator:  steam://  discord://' }));
     if (g.apps.length > 1) wrap.append(el('p', { class: 'muted', style: 'margin:0 0 8px', text: 'Dra i ⠿ för att ändra ordning, eller släpp på en glob ovanför för att flytta appen dit.' }));
@@ -1701,16 +1708,15 @@ function openApps(gi) {
       const row = a.pkg && NATIVE   // telefonapp: ikon och namn räcker
         ? el('div', { class: 'arow' }, grip, el('img', { class: 'aimg', src: '/icon/' + a.pkg, alt: '' }), f('name', 'Namn'), el('span', { class: 'muted', text: 'Telefonapp' }), move, del)
         : a.prog ? el('div', { class: 'arow' }, grip, el('img', { class: 'aimg', src: progIcon(a.prog), alt: '', onerror: e => e.target.style.visibility = 'hidden' }), f('name', 'Namn'), el('span', { class: 'muted', text: 'Program' }), move, del)
-        : el('div', { class: 'arow' }, grip, a.icon ? f('icon', 'Ikon', 'ai') : el('button', { class: 'wico btn', title: 'Byt ikon (emoji eller bildadress)', 'aria-label': 'Byt ikon',
-            onclick: () => { const v = prompt('Ikon: en emoji eller adressen till en bild. Lämna tomt för webbplatsens egen ikon.', a.icon || ''); if (v != null) { a.icon = v.trim(); changed(); draw(); } } }, webIcon(a, '')),
+        : el('div', { class: 'arow' }, grip, el('button', { class: 'wico btn', title: 'Byt ikon (emoji eller bildadress)', 'aria-label': 'Byt ikon',
+            onclick: () => pickIcon(a, () => { changed(); openApps(gi); }) }, webIcon(a, '')),
           f('name', 'Namn'), f('url', 'Adress eller protokoll'), move, del);
       wrap.append(row);
     });
     wrap.append(el('div', { class: 'row', style: 'margin-top:6px;flex-wrap:wrap' },
       el('button', { class: 'btn', text: NATIVE ? '+ Lägg till webblänk' : '+ Lägg till app', onclick: () => {
         g.apps.push(mkApp('', 'Ny app', 'https://')); changed(); draw();
-        const rows = wrap.querySelectorAll('.arow'); rows[rows.length - 1].children[2].select(); } }),
-      el('button', { class: 'btn', text: 'Importera länkar från .json', onclick: () => openImport(gi) })));
+        const rows = wrap.querySelectorAll('.arow'); rows[rows.length - 1].children[2].select(); } })));
   };
   // flytta en app till en annan glob (den hamnar sist där)
   const moveApp = (i, to) => { const g = state.globes[gi], a = g.apps.splice(i, 1)[0]; if (!a) return;
@@ -1777,6 +1783,21 @@ function parseLinks(data) {
   };
   walk(data, '', 0);
   return [...groups.values()].filter(g => g.apps.length);
+}
+// Välj ikon för en webbapp: webbplatsens egen, första bokstaven, eller en egen emoji eller bild
+function pickIcon(a, done) {
+  const set = (icon, mode) => { a.icon = icon; if (mode) a.iconMode = mode; else delete a.iconMode; done(); };
+  const own = el('input', { class: 'in', placeholder: 'Emoji eller adress till en bild', value: a.icon || '' });
+  const EM = ['🌐', '📧', '📅', '📁', '💼', '🛡️', '☁️', '🖥️', '📊', '📝', '💬', '🎵', '🎬', '🎮', '🛒', '🏦', '📰', '🔧', '🤖', '🎨', '📷', '🗺️', '📚', '⭐'];
+  const site = (() => { try { return /^https?:\/\//i.test(a.url) ? new URL(a.url).origin : ''; } catch { return ''; } })();
+  openModal('Ikon för ' + a.name, el('div', {},
+    el('div', { class: 'row', style: 'align-items:center;gap:12px;margin-bottom:10px' }, webIcon(a, 'wico'), el('span', { class: 'muted', text: a.icon ? 'Egen ikon' : a.iconMode === 'letter' ? 'Första bokstaven' : state.siteIcons === false ? 'Första bokstaven (webbplatsikoner är avstängda)' : 'Webbplatsens ikon' })),
+    el('div', { class: 'row', style: 'flex-wrap:wrap' },
+      site ? el('button', { class: 'btn', text: 'Webbplatsens ikon', onclick: () => set('', '') }) : null,
+      el('button', { class: 'btn', text: 'Första bokstaven', onclick: () => set('', 'letter') })),
+    el('div', { class: 'icopick' }, EM.map(e => el('button', { class: 'btn', text: e, 'aria-label': 'Ikon ' + e, onclick: () => set(e, '') }))),
+    el('form', { class: 'row', onsubmit: e => { e.preventDefault(); set(own.value.trim(), own.value.trim() ? '' : 'letter'); } }, own, el('button', { class: 'btn', text: 'Använd' })),
+    el('div', { class: 'row', style: 'margin-top:12px' }, el('button', { class: 'btn', text: 'Tillbaka', onclick: done }))));
 }
 function openImport(gi) {
   const g0 = state.globes[gi], wrap = el('div'), info = el('div', { style: 'margin:10px 0' });
@@ -1917,11 +1938,16 @@ $('#bSettings').onclick = () => {
     el('div', { class: 'field' }, el('label', { for: 'sBrand', text: 'Systemets namn' }),
       el('div', { class: 'row' },
         el('input', { id: 'sBrand', class: 'in', placeholder: 'V.I.C.T.O.R.', maxLength: 32, value: (state.brand && state.brand.name) || '',
-          oninput: e => { state.brand = Object.assign({}, state.brand, { name: e.target.value.trim() }); applyBrand(); save(); } }),
-        el('input', { class: 'in', placeholder: 'Undertext', 'aria-label': 'Undertext', maxLength: 40, value: state.brand && state.brand.sub != null ? state.brand.sub : 'by NoirLab',
-          oninput: e => { state.brand = Object.assign({}, state.brand, { sub: e.target.value }); applyBrand(); save(); } }),
+          oninput: e => { state.brand = { name: e.target.value.trim() }; applyBrand(); save(); } }),
         el('button', { class: 'btn', text: 'Återställ', onclick: () => { delete state.brand; applyBrand(); save(); $('#bSettings').click(); } })),
-      el('p', { class: 'muted', style: 'margin:6px 0 0', text: 'Visas uppe till vänster och i fliken. Namnet på den installerade appen och Android-ikonen ändras inte.' })),
+      el('p', { class: 'muted', style: 'margin:6px 0 0', text: 'Visas uppe till vänster och i fliken, alltid med "by NoirLab" under. Namnet på den installerade appen och Android-ikonen ändras inte.' })),
+    el('div', { class: 'field' }, el('span', { class: 'flabel', text: 'Glober och appar' }),
+      el('div', { class: 'row', style: 'flex-wrap:wrap' },
+        el('button', { class: 'btn', text: 'Öppna Glober', onclick: () => openApps() }),
+        el('button', { class: 'btn', text: 'Importera länkar från .json', onclick: () => openImport(state.active) })),
+      el('label', { class: 'row', style: 'cursor:pointer;margin-top:9px;align-items:center' },
+        el('input', { type: 'checkbox', class: 'chk', checked: state.siteIcons !== false, onchange: e => { state.siteIcons = e.target.checked; save(); buildScene(); } }),
+        'Hämta webbplatsernas egna ikoner (av: första bokstaven visas)')),
     el('div', { class: 'field' }, el('label', { text: 'Temafärg' }), sw),
     el('div', { class: 'field' }, el('label', { for: 'sName', text: 'Ditt namn' }),
       el('input', { id: 'sName', class: 'in', value: state.name, oninput: e => { state.name = e.target.value.trim(); save(); greet(); } })),

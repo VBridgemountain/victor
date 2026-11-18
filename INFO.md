@@ -56,9 +56,9 @@ De delar utseende men inte kod, och ingen av dem kräver den andra.
 
 **Sortera och flytta appar:** i Glober, dra i ⠿ framför en app för att ändra ordning, eller släpp den på en glob i flikraden för att flytta den dit. Menyn "Flytta till…" på varje rad gör samma sak.
 
-**Ikoner för webbadresser:** lämnas ikonen tom hämtas webbplatsens egen ikon direkt från sajten. Tryck på ikonen i Glober för att välja en emoji eller en bildadress i stället.
+**Ikoner för webbadresser:** som standard hämtas webbplatsens egen ikon direkt från sajten. Tryck på ikonen i Glober för att välja webbplatsens ikon, första bokstaven, en emoji eller en bildadress. Vill du inte ha webbplatsernas ikoner alls: Inställningar → stäng av "Hämta webbplatsernas egna ikoner".
 
-**Importera många länkar:** Glober → **Importera länkar från .json**. Välj en fil (på datorn) eller klistra in innehållet (fungerar även på telefonen). Varje adress blir en app. Filen kan vara:
+**Importera många länkar:** Glober eller Inställningar → **Importera länkar från .json**. Välj en fil (på datorn) eller klistra in innehållet (fungerar även på telefonen). Varje adress blir en app. Filen kan vara:
 
 - en lista med adresser: `["https://github.com", "youtube.com"]`
 - en lista med appar: `[{"name": "GitHub", "url": "https://github.com", "icon": "🐙"}]`
@@ -68,7 +68,7 @@ De delar utseende men inte kod, och ingen av dem kräver den andra.
 
 Grupper kan bli egna glober (befintliga med samma namn fylls på) eller hamna i en vald glob. Adresser som redan finns hoppas över. Under "Hur filen ska se ut" finns ett exempel att ladda ner.
 
-**Byta namn på systemet:** Inställningar → Systemets namn och undertext. Visas uppe till vänster och i fliken. Namnet på den installerade appen och Android-ikonen ändras inte.
+**Byta namn på systemet:** Inställningar → Systemets namn. Visas uppe till vänster och i fliken, alltid med "by NoirLab" under. Namnet på den installerade appen och Android-ikonen ändras inte.
 
 **Brainstorm:** zooma in i en glob, skriv en idé, klicka på den för att gå in i den och lägga underidéer. Knappen Claude kopierar idéträdet och öppnar Claude för att utveckla det.
 
