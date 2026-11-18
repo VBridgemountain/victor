@@ -1,0 +1,13 @@
+{
+    "version":  "1.5.0",
+    "date":  "2026-11-18",
+    "notes":  [
+                  "Se vilken version du har och uppdatera under Inställningar → Version",
+                  "Importera länkar från .json, i Glober och Inställningar",
+                  "Dra appar för att sortera dem eller flytta dem mellan glober",
+                  "Välj ikon per app, eller stäng av webbplatsernas ikoner",
+                  "Byt systemets namn under Inställningar",
+                  "Långa appnamn bryts på två rader i stället för att gå in i varandra"
+              ],
+    "apk":  "https://vbridgemountain.github.io/victor/desktop/victor.apk"
+}

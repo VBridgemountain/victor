@@ -72,6 +72,8 @@ Grupper kan bli egna glober (befintliga med samma namn fylls på) eller hamna i 
 
 **Brainstorm:** zooma in i en glob, skriv en idé, klicka på den för att gå in i den och lägga underidéer. Knappen Claude kopierar idéträdet och öppnar Claude för att utveckla det.
 
+**Version och uppdatering:** Inställningar → Version visar vilken version du har. Sök uppdatering jämför med den senaste, och appen kollar själv en gång per dygn och säger till om en ny finns. Uppdatera nu laddar om webbappen med den nya versionen. I Android-appen laddas den nya APK:n ner, och du installerar den över den gamla.
+
 **Data:** allt sparas i webbläsaren på den enheten. Flytta mellan enheter med Exportera/Importera under Inställningar. Dator och telefon delar inte data.
 
 ---
@@ -343,6 +345,7 @@ Genvägarna i widgeten fungerar direkt. Live-data kräver en appregistrering i d
 **Utveckling**
 
 - Skrivbordsappen är en enda fil: `desktop/index.html`. Inget byggsteg.
+- **Ny version:** höj `APP_VERSION` i `desktop/index.html` och skriv vad som är nytt under `notes` i `desktop/version.json`. Kör sedan bygget nedan: det skriver versionen till `version.json` och APK:n. Pusha därefter. Appar med en lägre version erbjuds uppdateringen.
 - En push till `main` publicerar webbappen via GitHub Pages inom någon minut.
 - Bygg Android-appen (kräver Android Studio med SDK):
 

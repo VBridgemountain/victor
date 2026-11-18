@@ -21,19 +21,29 @@ function Run($exe) {   # kör ett verktyg och avbryt om det misslyckas
     if ($LASTEXITCODE -ne 0) { throw "$([IO.Path]::GetFileName($exe)) misslyckades (kod $LASTEXITCODE)" }
 }
 
+# Versionen hämtas från APP_VERSION i index.html och skrivs till APK:n och till version.json (som appen jämför mot)
+$ver = [regex]::Match((Get-Content "$web\index.html" -Raw -Encoding UTF8), "const APP_VERSION = '(\d+)\.(\d+)\.(\d+)'")
+if (-not $ver.Success) { throw 'Hittar inte APP_VERSION i index.html.' }
+$verName = "$($ver.Groups[1].Value).$($ver.Groups[2].Value).$($ver.Groups[3].Value)"
+$verCode = [int]$ver.Groups[1].Value * 10000 + [int]$ver.Groups[2].Value * 100 + [int]$ver.Groups[3].Value
+$vj = Get-Content "$web\version.json" -Raw -Encoding UTF8 | ConvertFrom-Json
+$vj.version = $verName
+$vj.date = (Get-Date -Format 'yyyy-MM-dd')
+[IO.File]::WriteAllText("$web\version.json", ($vj | ConvertTo-Json -Depth 4), (New-Object Text.UTF8Encoding $false))
+
 $out = "$here\build"
 if (Test-Path $out) { Remove-Item $out -Recurse -Force }
 New-Item -ItemType Directory -Force "$out\assets", "$out\classes", "$out\dex" | Out-Null
 
 # 1. Webbgränssnittet följer med i appen (samma filer som på webben)
-Copy-Item "$web\index.html", "$web\icon.svg", "$web\icon-192.png", "$web\icon-512.png", "$web\icon-180.png", "$web\manifest.webmanifest" "$out\assets"   # platt mapp: aapt2 på Windows skriver undermappar med bakstreck
+Copy-Item "$web\index.html", "$web\icon.svg", "$web\icon-192.png", "$web\icon-512.png", "$web\icon-180.png", "$web\manifest.webmanifest", "$web\version.json" "$out\assets"   # platt mapp: aapt2 på Windows skriver undermappar med bakstreck
 New-Item -ItemType Directory -Force "$here\res\mipmap-xxhdpi" | Out-Null
 Copy-Item "$web\icon-192.png" "$here\res\mipmap-xxhdpi\ic_launcher.png" -Force
 
 # 2. Resurser + manifest
 Run "$bt\aapt2.exe" compile --dir "$here\res" -o "$out\res.zip"
 Run "$bt\aapt2.exe" link -o "$out\unsigned.apk" -I $jar --manifest "$here\AndroidManifest.xml" -A "$out\assets" `
-    --min-sdk-version 26 --target-sdk-version 34 --version-code 1 --version-name 0.1 "$out\res.zip"
+    --min-sdk-version 26 --target-sdk-version 34 --version-code $verCode --version-name $verName "$out\res.zip"
 
 # 3. Java -> dex
 $src = @((Get-ChildItem "$here\src" -Recurse -Filter *.java).FullName)

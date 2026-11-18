@@ -371,6 +371,9 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
    State (sparas i localStorage)
    ===================================================================== */
 const KEY = 'jarvis-desktop-v1';
+// Den här versionen av appen. Höj den vid varje ny version; android/build.ps1 skriver den till version.json och APK:n.
+const APP_VERSION = '1.5.0';
+const UPDATE_URL = 'https://vbridgemountain.github.io/victor/desktop/';
 // Finns bara när sidan körs inne i Android-launchern: brygga till telefonens appar (se android/MainActivity.java)
 // Microsoft-inloggningen (widgeten Microsoft 365 admin) öppnas i ett eget fönster och kommer tillbaka hit med ett svar i adressen.
 if (window.opener && /[?&]state=m365-/.test(location.search)) { try { window.opener.postMessage({ m365: location.search }, location.origin); } catch { } window.close(); }
@@ -1976,10 +1979,50 @@ $('#bSettings').onclick = () => {
               clearTimeout(saveT); localStorage.setItem(KEY, JSON.stringify(s)); location.reload();
             } catch { toast('IMPORT', 'Filen gick inte att läsa.'); } } }))),
       el('p', { class: 'muted', style: 'margin:8px 0 0', text: 'Allt sparas på varje enhet för sig. Exportera här och importera filen på den andra enheten för att ta med appar, widgets och idéer.' })),
+    el('div', { class: 'field' }, el('span', { class: 'flabel', text: 'Version' }), versionField()),
     el('div', { class: 'field', style: 'margin:0' }, el('span', { class: 'flabel', text: 'Återställ' }),
       el('button', { class: 'btn danger', text: 'Nollställ allt', onclick: () => {
         if (confirm('Ta bort alla appar, widgets, påminnelser och inställningar och börja om?')) { clearTimeout(saveT); localStorage.removeItem(KEY); location.reload(); } } }))));
 };
+/* ---------- Version och uppdateringar ---------- */
+// Jämför den här versionen med version.json på webben. Webbappen uppdateras genom att laddas om,
+// Android-appen genom att den nya APK:n laddas ner och installeras över den gamla.
+const vParts = v => String(v || '0').split('.').map(x => parseInt(x, 10) || 0);
+const vNewer = (a, b) => { const x = vParts(a), y = vParts(b); for (let i = 0; i < 3; i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0); return false; };
+let latest = null, latestErr = '';
+async function checkUpdate() {
+  try {
+    const r = await fetch((NATIVE ? UPDATE_URL : '') + 'version.json?t=' + Date.now(), { cache: 'no-store' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    latest = await r.json(); latestErr = '';
+  } catch { latestErr = 'Kunde inte kontrollera. Ingen anslutning?'; }
+  state.updChecked = Date.now(); save();
+  return latest && vNewer(latest.version, APP_VERSION) ? latest : null;
+}
+async function doUpdate() {
+  if (NATIVE) { openUrl((latest && latest.apk) || UPDATE_URL + 'victor.apk'); toast('UPPDATERING', 'Laddar ner den nya versionen. Öppna filen när den är klar och välj Installera. Dina glober ligger kvar.', true); return; }
+  try {   // hämta om sidan förbi webbläsarens cache, så att omladdningen ger den nya versionen
+    await fetch('index.html', { cache: 'reload' }); await fetch('sw.js', { cache: 'reload' });
+    const reg = navigator.serviceWorker && await navigator.serviceWorker.getRegistration(); if (reg) await reg.update();
+  } catch { }
+  location.reload();
+}
+function versionField() {
+  const box = el('div');
+  const draw = (checking) => {
+    box.textContent = '';
+    const nw = latest && vNewer(latest.version, APP_VERSION);
+    box.append(el('div', { class: 'row', style: 'align-items:center;flex-wrap:wrap' },
+      el('span', { class: 'mono', text: 'Version ' + APP_VERSION }),
+      el('span', { class: 'muted', text: checking ? 'kontrollerar…' : nw ? '' : latestErr ? latestErr : latest ? '· senaste versionen' : '' }),
+      nw ? null : el('button', { class: 'btn', text: 'Sök uppdatering', disabled: !!checking, onclick: async () => { draw(true); await checkUpdate(); draw(); } })));
+    if (nw) box.append(el('div', { style: 'margin-top:8px;padding:8px 10px;border-left:2px solid var(--accent);background:rgba(var(--rgb),.08)' },
+      el('b', { text: 'Version ' + latest.version + ' finns' + (latest.date ? ' (' + latest.date + ')' : '') }),
+      Array.isArray(latest.notes) && latest.notes.length ? el('ul', { style: 'margin:6px 0 8px;padding-left:18px' }, latest.notes.slice(0, 8).map(n => el('li', { text: String(n) }))) : null,
+      el('button', { class: 'btn on', text: NATIVE ? 'Ladda ner och installera' : 'Uppdatera nu', onclick: doUpdate })));
+  };
+  draw(); return box;
+}
 $('#bFull').onclick = () => document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen().catch(() => {});
 
 /* =====================================================================
@@ -1995,6 +2038,8 @@ if (!NATIVE && 'serviceWorker' in navigator && location.protocol.startsWith('htt
 if (!NATIVE) helperConnect().then(ok => { if (ok) refresh('running'); });   // datorbryggan, om den är kopplad
 
 applyBrand();
+if (Date.now() - (state.updChecked || 0) > 20 * 3600e3) setTimeout(() => checkUpdate().then(n => {
+  if (n) toast('UPPDATERING', `Version ${n.version} finns. Öppna Inställningar → Version för att uppdatera.`, true); }), 6000);
 
 // första starten: hälsa välkommen och fråga vad användaren heter
 if (firstRun) {
