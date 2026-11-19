@@ -258,10 +258,11 @@ function serverView(s) {
 // En spelserver som skulle vara igång har stannat. Med "starta om vid krasch" startas den igen, högst tre gånger på 15 minuter.
 function crashed(s) {
   const r = R(s.id), now = Date.now(); r.crashes = (r.crashes || []).filter(t => now - t < 900000); r.crashes.push(now);
+  if (cfg.maintenance) return event(`${s.name} har stannat (underhållsläge, startas inte om).`, 'info', 'crash');
   if (s.autorestart && r.crashes.length <= 3) {
-    event(`${s.name} stannade oväntat och startas om.`, 'warn');
-    setTimeout(() => { try { if (!alive(s.pid) && s.wanted) startServer(s); } catch (e) { event(`${s.name} kunde inte startas om: ${e.message}`, 'bad'); } }, 10000);
-  } else event(`${s.name} har stannat oväntat` + (s.autorestart ? ' flera gånger i rad och startas inte om automatiskt.' : '.'), 'bad');
+    event(`${s.name} stannade oväntat och startas om.`, 'warn', 'crash');
+    setTimeout(() => { try { if (!alive(s.pid) && s.wanted) startServer(s); } catch (e) { event(`${s.name} kunde inte startas om: ${e.message}`, 'bad', 'crash'); } }, 10000);
+  } else event(`${s.name} har stannat oväntat` + (s.autorestart ? ' flera gånger i rad och startas inte om automatiskt.' : '.'), 'bad', 'crash');
 }
 // Väntar tills en server har stängts (högst en minut)
 const stopAndWait = async s => { stopServer(s); for (let i = 0; i < 60 && alive(s.pid); i++) await new Promise(r => setTimeout(r, 1000)); s.pid = alive(s.pid) ? s.pid : 0; };
@@ -308,24 +309,28 @@ async function restoreServer(s, name) {
     try { await runP('tar', ['-xzf', path.join(bkDir(s), b.name), '-C', path.dirname(src)]); }
     catch (e) { fs.rmSync(src, { recursive: true, force: true }); if (fs.existsSync(old)) fs.renameSync(old, src); throw new Error('Återställningen misslyckades, inget är ändrat: ' + e.message); }
   } finally { r.job = null; }
-  event(`${s.name} återställdes till säkerhetskopian ${b.name}.`, 'info');
+  event(`${s.name} återställdes till säkerhetskopian ${b.name}.`, 'info', 'info');
 }
 
 // ------------------------------------------------------------------ händelser och notiser till telefonen
 // Allt viktigt skrivs till events.log (visas i panelen) och kan skickas som notis via ntfy och/eller Discord.
 const EVENTS = path.join(LOGS, 'events.log');
 let notifyErr = '';
-function event(text, level = 'info') {
+// Typer: crash (spelserver stannar eller startar inte), system (disk, minne), jobs (säkerhetskopia, uppdatering),
+// online (servern igång igen, omstart från panelen), info (automatiska starter, uppdateringar, återställningar).
+const KINDS = { crash: true, system: true, jobs: true, online: true, info: false };
+const wants = kind => { const e = (cfg.notify && cfg.notify.events) || {}; return e[kind] != null ? !!e[kind] : KINDS[kind]; };
+function event(text, level = 'info', kind = 'info') {
   fs.appendFile(EVENTS, `${new Date().toISOString()}\t${level}\t${text.replace(/[\r\n\t]/g, ' ')}\n`, () => {});
-  if (level !== 'info' || (cfg.notify && cfg.notify.all)) notify(text, level).catch(() => {});
+  if (wants(kind) && !(cfg.maintenance && kind !== 'online')) notify(text, level).catch(() => {});   // underhållsläge: tyst, utom start/omstart av datorn
 }
 async function notify(text, level = 'info') {
   const n = cfg.notify || {}, title = os.hostname() + ' · ' + (level === 'bad' ? 'Åtgärd behövs' : level === 'warn' ? 'Varning' : 'Info'), jobs = [];
   const post = (url, obj) => fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(obj), signal: AbortSignal.timeout(10000) })
     .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); });
-  if (n.ntfy) { const u = new URL(n.ntfy); jobs.push(post(u.origin, { topic: u.pathname.replace(/^\/+|\/+$/g, ''), title, message: text,
+  if (n.ntfy && n.ntfyOn !== false) { const u = new URL(n.ntfy); jobs.push(post(u.origin, { topic: u.pathname.replace(/^\/+|\/+$/g, ''), title, message: text,
     priority: level === 'bad' ? 5 : level === 'warn' ? 4 : 3, tags: [level === 'bad' ? 'rotating_light' : level === 'warn' ? 'warning' : 'information_source'] })); }
-  if (n.discord) jobs.push(post(n.discord, { username: 'V.I.C.T.O.R. Server', content: `**${title}**\n${text}` }));
+  if (n.discord && n.discordOn !== false) jobs.push(post(n.discord, { username: 'V.I.C.T.O.R. Server', content: `**${title}**\n${text}` }));
   if (!jobs.length) return;
   try { await Promise.all(jobs); notifyErr = ''; } catch (e) { notifyErr = e.message; throw e; }
 }
@@ -343,7 +348,7 @@ function sysAlerts(d) {
 const alerted = new Set();
 async function watchSystem() {   // meddelar en allvarlig systemvarning en gång, och igen först när den har gått över
   const bad = sysAlerts(await disk()).filter(x => x.level === 'bad');
-  for (const x of bad) if (!alerted.has(x.key)) { alerted.add(x.key); event(x.text, 'bad'); }
+  for (const x of bad) if (!alerted.has(x.key)) { alerted.add(x.key); event(x.text, 'bad', 'system'); }
   for (const k of [...alerted]) if (!bad.some(x => x.key === k)) alerted.delete(k);
 }
 
@@ -351,11 +356,12 @@ async function watchSystem() {   // meddelar en allvarlig systemvarning en gång
 const ran = new Map();   // vad som redan körts i dag, så att inget körs två gånger
 const today = () => new Date().toDateString();
 async function scheduler() {
+  if (cfg.maintenance) return;
   const now = new Date(), hr = now.getHours();
   for (const s of cfg.servers) {
-    const once = (what, fn) => { const k = s.id + what; if (ran.get(k) === today()) return; ran.set(k, today()); fn().catch(e => event(`${s.name}: ${e.message}`, 'bad')); };
+    const once = (what, fn) => { const k = s.id + what; if (ran.get(k) === today()) return; ran.set(k, today()); fn().catch(e => event(`${s.name}: ${e.message}`, 'bad', 'jobs')); };
     if (s.backupAt >= 0 && s.backupAt === hr && s.backupDir) once('backup', async () => { await backupServer(s, 'daglig'); });
-    if (s.restartAt >= 0 && s.restartAt === hr && alive(s.pid)) once('restart', async () => { await stopAndWait(s); startServer(s); event(`${s.name} startades om enligt schemat.`); });
+    if (s.restartAt >= 0 && s.restartAt === hr && alive(s.pid)) once('restart', async () => { await stopAndWait(s); startServer(s); event(`${s.name} startades om enligt schemat.`, 'info', 'info'); });
     if (s.autoUpdate && hr === (s.restartAt >= 0 ? s.restartAt : 5)) once('update', () => autoUpdate(s));
   }
 }
@@ -363,14 +369,14 @@ async function autoUpdate(s) {   // uppdaterar bara när ingen spelar; tar en s�
   const r = R(s.id);
   await checkServer(s); const v = serverView(s);
   if (!v.updateAvailable) return;
-  if (v.running && v.query && v.query.players > 0) { event(`${s.name} har en uppdatering men ${v.query.players} spelar just nu. Försöker igen i morgon.`, 'warn'); return; }
+  if (v.running && v.query && v.query.players > 0) { event(`${s.name} har en uppdatering men ${v.query.players} spelar just nu. Försöker igen i morgon.`, 'warn', 'jobs'); return; }
   const was = v.running;
   if (s.backupDir) await backupServer(s, 'fore-uppdatering');
   if (was) await stopAndWait(s);
   await updateServer(s);
   if (r.jobText !== 'Klar') throw new Error('uppdateringen misslyckades: ' + r.jobText);
   if (was) { s.wanted = true; startServer(s); }
-  event(`${s.name} uppdaterades till build ${installedBuild(s)}.`);
+  event(`${s.name} uppdaterades till build ${installedBuild(s)}.`, 'info', 'info');
 }
 
 // ------------------------------------------------------------------ datorn: start, avbrott, omstart och avstängning
@@ -386,16 +392,16 @@ function startup() {
   const fmt = t => new Date(t).toLocaleString('sv-SE', { dateStyle: 'short', timeStyle: 'short' });
   if (last && bootTime > last) {
     power = { bootTime, agentStart, downFrom: last, reason: planned ? (planned.action === 'restart' ? 'omstart från panelen' : 'avstängning från panelen') : 'oväntad omstart, t.ex. strömavbrott eller Windows-uppdatering' };
-    event(`Servern är igång igen. Den var nere från ${fmt(last)} till ${fmt(bootTime)} (${power.reason}).`, planned ? 'info' : 'warn');
+    event(`Servern är igång igen. Den var nere från ${fmt(last)} till ${fmt(bootTime)} (${power.reason}).`, planned ? 'info' : 'warn', 'online');
   } else if (last && Date.now() - last > 180000) {
     power = { bootTime, agentStart, downFrom: last, reason: 'programmet var stoppat' };
-    event(`V.I.C.T.O.R. Server startades igen efter att ha varit stoppad sedan ${fmt(last)}.`);
+    event(`V.I.C.T.O.R. Server startades igen efter att ha varit stoppad sedan ${fmt(last)}.`, 'info', 'online');
   }
   // spelservrar som ska starta med datorn, eller som var igång och ska startas om
   const due = cfg.servers.filter(s => !alive(s.pid) && fs.existsSync(sdir(s)) && (s.autostart || (s.wanted && s.autorestart)));
   if (due.length) setTimeout(() => { const ok = [];
-    for (const s of due) try { startServer(s); ok.push(s.name); } catch (e) { event(`${s.name} kunde inte startas: ${e.message}`, 'bad'); }
-    if (ok.length) event('Startade automatiskt: ' + ok.join(', ') + '.'); }, 15000);
+    for (const s of due) try { startServer(s); ok.push(s.name); } catch (e) { event(`${s.name} kunde inte startas: ${e.message}`, 'bad', 'crash'); }
+    if (ok.length) event('Startade automatiskt: ' + ok.join(', ') + '.', 'info', 'info'); }, 15000);
 }
 const beat = () => fs.writeFile(HEART, String(Date.now()), () => {});
 // Startar agenten automatiskt med datorn? (Windows: schemalagd uppgift, Linux: systemd-tjänst)
@@ -406,15 +412,28 @@ async function checkAutostart() {
                  : (await run('systemctl', ['is-enabled', 'victor-server'])).trim() === 'enabled';
   autostart = { on, at: Date.now() }; return on;
 }
+let isAdmin = null;
+async function adminRights() {
+  if (isAdmin != null) return isAdmin;
+  isAdmin = WIN ? await new Promise(r => execFile('net', ['session'], { windowsHide: true }, e => r(!e))) : process.getuid && process.getuid() === 0;
+  return isAdmin;
+}
+async function setAutostart(on) {
+  if (!(await adminRights())) throw new Error(WIN ? 'Programmet saknar administratörsbehörighet. Kör ' + (on ? 'installera-autostart.cmd' : 'ta-bort-autostart.cmd') + ' på serverdatorn en gång; därefter går det att ändra här.'
+                                                  : 'Kräver root. Kör sudo sh autostart-linux.sh' + (on ? '' : ' --remove') + ' på serverdatorn.');
+  if (WIN) await runP('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(ROOT, 'autostart-windows.ps1'), '-Quiet', ...(on ? [] : ['-Remove'])], 120000);
+  else await runP('sh', [path.join(ROOT, 'autostart-linux.sh'), ...(on ? [] : ['--remove'])], 120000);
+  autostart.at = 0; event(on ? 'Autostart med datorn slogs på från panelen.' : 'Autostart med datorn stängdes av från panelen.', 'info', 'info');
+}
 function powerAction(action) {
   cfg.plannedPower = { action, at: Date.now() }; save();
-  event(action === 'restart' ? 'Datorn startas om från panelen.' : 'Datorn stängs av från panelen.');
+  event(action === 'restart' ? 'Datorn startas om från panelen.' : 'Datorn stängs av från panelen.', 'info', 'online');
   for (const s of cfg.servers) if (alive(s.pid)) { const w = s.wanted; stopServer(s); s.wanted = w; }   // "wanted" behålls, så att de startar igen efteråt
   save();
   setTimeout(() => {
     const [cmd, args] = WIN ? ['shutdown', [action === 'restart' ? '/r' : '/s', '/t', '5', '/c', 'V.I.C.T.O.R. Server']]
                             : ['systemctl', [action === 'restart' ? 'reboot' : 'poweroff']];
-    execFile(cmd, args, { windowsHide: true }, e => { if (e) { delete cfg.plannedPower; save(); event('Datorn kunde inte ' + (action === 'restart' ? 'startas om' : 'stängas av') + ': ' + e.message, 'bad'); } });
+    execFile(cmd, args, { windowsHide: true }, e => { if (e) { delete cfg.plannedPower; save(); event('Datorn kunde inte ' + (action === 'restart' ? 'startas om' : 'stängas av') + ': ' + e.message, 'bad', 'online'); } });
   }, 4000);
 }
 const macs = () => Object.entries(os.networkInterfaces()).flatMap(([name, l]) => l.filter(a => !a.internal && a.family === 'IPv4' && a.mac && a.mac !== '00:00:00:00:00:00').map(a => ({ name, ip: a.address, mac: a.mac })));
@@ -641,7 +660,9 @@ async function status() {
     ports: ports.list, servers: cfg.servers.map(serverView), templates: TEMPLATES,
     steamcmd: { path: steamcmdPath(), installing: scInstall, error: scErr }, serversDir: cfg.serversDir, arcadePort: APORT,
     power: { ...power, autostart: await checkAutostart(), service: SERVICE, macs: macs() }, events: recentEvents(12), totpOn: !!cfg.totp,
-    notify: { ntfy: (cfg.notify || {}).ntfy || '', discord: (cfg.notify || {}).discord ? 'satt' : '', all: !!(cfg.notify || {}).all, error: notifyErr },
+    notify: (n => ({ ntfy: n.ntfy || '', ntfyOn: n.ntfyOn !== false, discord: !!n.discord, discordName: n.discordName || '', discordOn: n.discordOn !== false,
+      events: Object.fromEntries(Object.keys(KINDS).map(k => [k, wants(k)])), error: notifyErr }))(cfg.notify || {}),
+    maintenance: !!cfg.maintenance, admin: await adminRights(),
   };
 }
 // Översikt för V.I.C.T.O.R.-widgeten på dator och telefon: bara läsning, med en egen läsnyckel i stället för inloggning.
@@ -722,8 +743,17 @@ async function api(req, res, url) {
   }
   if (p === '/api/notify' && m === 'POST') {   // notisinställningar
     const b = await body(req), n = cfg.notify = cfg.notify || {};
+    if (b.ntfyOn != null) n.ntfyOn = !!b.ntfyOn;
+    if (b.discordOn != null) n.discordOn = !!b.discordOn;
+    if (b.events && typeof b.events === 'object') { n.events = n.events || {}; for (const k of Object.keys(KINDS)) if (b.events[k] != null) n.events[k] = !!b.events[k]; }
     if (b.ntfy != null) { const u = clean(b.ntfy, 300); if (u && !/^https:\/\/[\w.-]+(:\d+)?\/[\w-]{6,64}\/?$/.test(u)) throw new Error('ntfy-adressen ska se ut som https://ntfy.sh/ditt-hemliga-amne'); n.ntfy = u; }
-    if (b.discord != null) { const u = clean(b.discord, 300); if (u && !/^https:\/\/(discord|discordapp)\.com\/api\/webhooks\/\d+\/[\w-]+$/.test(u)) throw new Error('Det ser inte ut som en Discord-webhook.'); n.discord = u; }
+    if (b.discord != null) { const u = clean(b.discord, 300); if (u && !/^https:\/\/(discord|discordapp)\.com\/api\/webhooks\/\d+\/[\w-]+$/.test(u)) throw new Error('Det ser inte ut som en Discord-webhook.');
+      if (u) {   // fråga Discord om webhooken finns, och spara dess namn så att panelen kan visa vart notiserna går
+        const r = await fetch(u, { signal: AbortSignal.timeout(10000) }).catch(() => null);
+        if (!r || !r.ok) throw new Error('Discord känner inte igen webhooken. Kontrollera att adressen är hela och att webhooken inte är borttagen.');
+        const j = await r.json().catch(() => ({})); n.discordName = String(j.name || 'webhook').slice(0, 60); n.discordOn = true;
+      } else delete n.discordName;
+      n.discord = u; }
     if (b.all != null) n.all = !!b.all;
     save();
     if (b.test) { try { await notify('Testnotis från V.I.C.T.O.R. Server. Notiserna fungerar.', 'info'); } catch (e) { throw new Error('Notisen gick inte fram: ' + e.message); } }
@@ -735,6 +765,12 @@ async function api(req, res, url) {
     if (!checkPw(b.password || '') || (cfg.totp && !totpOk(cfg.totp, b.code))) { failed(ip); return send(res, 401, { error: cfg.totp ? 'Fel lösenord eller kod.' : 'Fel lösenord.' }); }
     if (!['restart', 'shutdown'].includes(b.action)) return send(res, 400, { error: 'Okänd åtgärd.' });
     logAccess(req, b.action === 'restart' ? 'omstart av datorn' : 'avstängning av datorn'); powerAction(b.action);
+    return send(res, 200, { ok: true });
+  }
+  if (p === '/api/drift' && m === 'POST') {   // underhållsläge och autostart
+    const b = await body(req);
+    if (b.maintenance != null) { cfg.maintenance = !!b.maintenance; save(); event(cfg.maintenance ? 'Underhållsläge påslaget: ingen automatisk omstart eller schemalagt arbete.' : 'Underhållsläge avslaget.', 'info', 'info'); }
+    if (b.autostart != null) await setAutostart(!!b.autostart);
     return send(res, 200, { ok: true });
   }
   if (p === '/api/events' && m === 'GET') return send(res, 200, { events: recentEvents(200) });
@@ -758,6 +794,7 @@ async function api(req, res, url) {
   const sm = p.match(/^\/api\/servers\/([a-f0-9]{8})(?:\/(start|stop|update|check|log|backups|backup|restore))?$/);
   if (sm) {
     const s = cfg.servers.find(x => x.id === sm[1]); if (!s) return send(res, 404, { error: 'Servern finns inte.' });
+    if (!sm[2] && m === 'PATCH') { const b = await body(req); for (const k of ['autostart', 'autorestart', 'autoUpdate']) if (b[k] != null) s[k] = !!b[k]; save(); return send(res, 200, { ok: true }); }
     if (!sm[2] && m === 'DELETE') {   // tar bara bort den ur panelen; spelfilerna på disken rörs inte
       if (alive(s.pid)) return send(res, 400, { error: 'Stoppa servern först.' });
       cfg.servers = cfg.servers.filter(x => x !== s); rt.delete(s.id); save(); return send(res, 200, { ok: true });
@@ -770,7 +807,7 @@ async function api(req, res, url) {
     if (sm[2] === 'start') startServer(s);
     else if (sm[2] === 'stop') stopServer(s);
     else if (sm[2] === 'update') { if (alive(s.pid)) throw new Error('Stoppa servern innan den uppdateras.');
-      (async () => { if (s.backupDir && fs.existsSync(bkSrc(s))) await backupServer(s, 'fore-uppdatering').catch(e => event(`${s.name}: ${e.message}`, 'warn')); await updateServer(s); })().catch(e => { R(s.id).jobText = e.message; }); }
+      (async () => { if (s.backupDir && fs.existsSync(bkSrc(s))) await backupServer(s, 'fore-uppdatering').catch(e => event(`${s.name}: ${e.message}`, 'warn', 'jobs')); await updateServer(s); })().catch(e => { R(s.id).jobText = e.message; }); }
     else if (sm[2] === 'check') checkServer(s).catch(e => { R(s.id).jobText = e.message; });
     else return send(res, 404, { error: 'Okänt kommando.' });
     return send(res, 200, { ok: true });

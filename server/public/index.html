@@ -232,15 +232,17 @@ function render() {
   drawSpark(s.net.hist);
   const pw = s.power;
   $('pwrSvc').textContent = pw.service ? 'autostart' : '';
-  if (changed($('pwr'), JSON.stringify([pw.bootTime, pw.downFrom, pw.autostart, s.events.slice(0, 5), s.notify]))) put($('pwr'),
+  if (changed($('pwr'), JSON.stringify([pw.bootTime, pw.downFrom, pw.autostart, s.events.slice(0, 5), s.notify, s.maintenance]))) put($('pwr'),
     h('div', { class: 'kv' }, h('span', null, 'Datorn startad'), h('span', null, fmtTime(pw.bootTime))),
     pw.downFrom ? h('div', { class: 'kv' }, h('span', null, 'Senaste avbrott'), h('span', null, `${fmtTime(pw.downFrom)} – ${fmtTime(pw.bootTime > pw.downFrom ? pw.bootTime : pw.agentStart)}`)) : null,
     pw.downFrom ? h('p', { class: 'note', style: 'margin:2px 0 6px' }, 'Orsak: ' + pw.reason + '.') : null,
     h('div', { class: 'kv' }, h('span', null, 'Startar med datorn'), h('span', { style: pw.autostart ? 'color:var(--ok)' : 'color:var(--wait)' }, pw.autostart ? 'ja' : 'nej')),
     !pw.autostart && h('p', { class: 'note', style: 'margin:2px 0 6px' }, s.platform === 'win' ? 'Kör installera-autostart.cmd i mappen server på serverdatorn, så startar allt av sig självt efter strömavbrott och omstarter.' : 'Kör sudo sh autostart-linux.sh i mappen server på serverdatorn.'),
-    h('div', { class: 'kv' }, h('span', null, 'Notiser till telefonen'), h('span', { style: s.notify.ntfy || s.notify.discord ? 'color:var(--ok)' : '' }, s.notify.error ? 'fel' : s.notify.ntfy || s.notify.discord ? 'på' : 'av')),
+    h('div', { class: 'kv' }, h('span', null, 'Notiser till telefonen'), h('span', { style: (s.notify.ntfy && s.notify.ntfyOn) || (s.notify.discord && s.notify.discordOn) ? 'color:var(--ok)' : '' },
+      s.notify.error ? 'fel' : [s.notify.ntfy && s.notify.ntfyOn && 'ntfy', s.notify.discord && s.notify.discordOn && 'Discord'].filter(Boolean).join(' + ') || 'av')),
     h('div', { class: 'row' }, h('button', { class: 'btn', onclick: () => openPower('restart') }, 'Starta om datorn'), h('button', { class: 'btn red', onclick: () => openPower('shutdown') }, 'Stäng av')),
-    h('div', { class: 'row', style: 'margin-top:8px' }, h('button', { class: 'btn', onclick: openNotify }, 'Notiser …'), h('button', { class: 'btn', onclick: openEvents }, 'Händelser …')),
+    S.maintenance && h('p', { class: 'err', style: 'margin:4px 0' }, 'Underhållsläge: ingen automatik och inga notiser.'),
+    h('div', { class: 'row', style: 'margin-top:8px' }, h('button', { class: 'btn', onclick: openNotify }, 'Drift och notiser …'), h('button', { class: 'btn', onclick: openEvents }, 'Händelser …')),
     h('label', null, 'Senaste händelser'),
     s.events.length ? s.events.slice(0, 5).map(e => h('div', { class: 'ev ' + e.level }, h('time', null, fmtTime(e.t)), h('span', null, e.text))) : h('p', { class: 'note', style: 'margin:0' }, 'Inget har hänt än.'));
 
@@ -306,7 +308,9 @@ function fillServer(x) {
           [...x.players].sort((a, b) => b.secs - a.secs).map(p => h('tr', null, h('td', { style: 'max-width:260px' }, p.name || '(ansluter …)'), h('td', null, p.score), h('td', null, fmtDur(p.secs))))))
       : h('p', { class: 'note', style: 'margin-top:0' }, x.players ? 'Ingen är ansluten just nu.' : 'Spelet lämnar inte ut någon spelarlista.')),
     x.jobText && !x.job && h('div', { class: 'err' }, x.jobText),
-    h('div', { class: 'chips' }, x.autostart && h('span', null, 'STARTAR MED DATORN'), x.autorestart && h('span', null, 'OMSTART VID KRASCH'),
+    h('div', { class: 'row', style: 'margin:6px 0 0;gap:16px' }, [['autostart', 'Starta med datorn'], ['autorestart', 'Omstart vid krasch'], ['autoUpdate', 'Autouppdatera']].map(([k, t]) =>
+      h('label', { class: 'chk', style: 'margin:0' }, h('input', { type: 'checkbox', checked: x[k], onchange: e => act('PATCH', `/api/servers/${x.id}`, { [k]: e.target.checked }).catch(() => { e.target.checked = !e.target.checked; }) }), t))),
+    h('div', { class: 'chips' },
       x.restartAt >= 0 && h('span', null, 'OMSTART ' + String(x.restartAt).padStart(2, '0') + ':00'), x.autoUpdate && h('span', null, 'AUTOUPPDATERAS'),
       x.backupDir && h('span', null, x.backupAt >= 0 ? 'BACKUP ' + String(x.backupAt).padStart(2, '0') + ':00' : 'BACKUP MANUELL'),
       x.backupDir && h('span', null, x.backups + ' KOPIOR' + (x.lastBackup ? ' · SENAST ' + fmtTime(x.lastBackup) : ''))),
@@ -399,25 +403,44 @@ function openPower(action) {
     h('label', null, 'Bekräfta med ditt lösenord'), pw, S.totpOn ? [h('label', null, 'Kod från autentiseringsappen'), code] : null, err,
     h('div', { class: 'row' }, h('button', { class: 'btn ' + (rs ? 'pri' : 'red') }, rs ? 'Starta om' : 'Stäng av'), h('button', { class: 'btn', type: 'button', onclick: closeModal }, 'Avbryt'))));
 }
+// Drift och notiser: autostart, underhållsläge, notiskanaler (av/på, byta Discord-kanal) och vilka händelser som skickas
 function openNotify() {
   editing = true;
-  const n = S.notify, ntfy = h('input', { class: 'in', placeholder: 'https://ntfy.sh/ditt-hemliga-amne', value: n.ntfy }),
-        dc = h('input', { class: 'in', placeholder: n.discord ? '(sparad, klistra in en ny för att byta)' : 'https://discord.com/api/webhooks/…' }),
-        all = h('input', { type: 'checkbox', checked: n.all }), err = h('div', { class: 'err' });
+  const n = S.notify, err = h('div', { class: 'err' }), box = h('div');
+  const cb = (on, txt, fn) => { const c = h('input', { type: 'checkbox', checked: on }); if (fn) c.onchange = () => fn(c.checked, c); return [h('label', { class: 'chk' }, c, txt), c]; };
+  const live = async (data, c) => { err.textContent = ''; try { await call('POST', '/api/drift', data); await poll(); openNotify(); } catch (v) { err.textContent = v.message; if (c) c.checked = !c.checked; } };
+  const [asL] = cb(S.power.autostart, 'Starta V.I.C.T.O.R. Server automatiskt med datorn (även utan inloggning)', (v, c) => live({ autostart: v }, c));
+  const [mtL] = cb(S.maintenance, 'Underhållsläge: ingen automatisk omstart, inga schemalagda omstarter, säkerhetskopior eller uppdateringar, och inga notiser utom när datorn startar', (v, c) => live({ maintenance: v }, c));
+  if (!S.admin) asL.querySelector('input').disabled = true;
+  const [ntL, ntOn] = cb(n.ntfyOn, 'Skicka till ntfy'), ntfy = h('input', { class: 'in', placeholder: 'https://ntfy.sh/ditt-hemliga-amne', value: n.ntfy });
+  const [dcL, dcOn] = cb(n.discordOn, 'Skicka till Discord'), dc = h('input', { class: 'in', placeholder: 'https://discord.com/api/webhooks/…' });
+  const EV = [['crash', 'En spelserver kraschar eller går inte att starta'], ['system', 'Disken eller minnet håller på att ta slut'], ['jobs', 'En säkerhetskopia eller uppdatering misslyckas'],
+              ['online', 'Servern är igång igen efter strömavbrott eller omstart'], ['info', 'Vanliga händelser: automatiska starter, uppdateringar, återställningar, schemalagda omstarter']];
+  const ev = EV.map(([k, t]) => [k, ...cb(n.events[k], t)]);
+  let dropDiscord = false;
   const sendIt = async test => { err.textContent = '';
-    try { await call('POST', '/api/notify', { ntfy: ntfy.value.trim(), discord: dc.value.trim() || undefined, all: all.checked, test }); toast(test ? 'Testnotisen är skickad.' : 'Sparat.'); poll(); if (!test) closeModal(); }
+    try { await call('POST', '/api/notify', { ntfy: ntfy.value.trim(), ntfyOn: ntOn.checked, discord: dropDiscord ? '' : dc.value.trim() || undefined, discordOn: dcOn.checked,
+        events: Object.fromEntries(ev.map(([k, , c]) => [k, c.checked])), test });
+      toast(test ? 'Sparat. Testnotisen är skickad.' : 'Sparat.'); await poll(); if (test) openNotify(); else closeModal(); }
     catch (v) { err.textContent = v.message; } };
-  modal('Notiser till telefonen', h('div', null,
-    h('p', { style: 'margin-top:0' }, 'Få en notis när en spelserver kraschar, disken blir full, en säkerhetskopia misslyckas eller servern startar igen efter ett strömavbrott.'),
-    h('label', null, 'ntfy (enklast: gratis app för Android och iPhone)'), ntfy,
-    h('div', { class: 'row', style: 'margin-top:6px' }, h('button', { class: 'btn', type: 'button', onclick: () => { ntfy.value = 'https://ntfy.sh/victor-' + Array.from(crypto.getRandomValues(new Uint8Array(9)), b => b.toString(36).padStart(2, '0')).join('').slice(0, 16); } }, 'Skapa hemligt ämne')),
-    h('p', { class: 'note' }, 'Installera appen ntfy på telefonen, tryck + och prenumerera på samma ämne (det efter ntfy.sh/). Ämnesnamnet fungerar som lösenord: den som känner till det kan läsa notiserna, så använd ett slumpat.'),
-    h('label', null, 'Discord-webhook (valfritt)'), dc,
-    h('p', { class: 'note' }, 'Discord: Serverinställningar → Integrationer → Webhooks → Ny webhook → Kopiera URL.'),
-    h('label', { class: 'chk' }, all, 'Skicka även vanliga händelser (automatiska starter, uppdateringar, återställningar)'),
+  modal('Drift och notiser', h('div', null,
+    h('label', null, 'Drift'), asL,
+    !S.admin && h('p', { class: 'note', style: 'margin:-4px 0 6px 26px' }, S.power.autostart ? 'Kan inte ändras härifrån just nu: programmet saknar administratörsbehörighet. Kör ta-bort-autostart.cmd på serverdatorn.'
+      : 'Slås på genom att köra installera-autostart.cmd på serverdatorn en gång. Därefter körs programmet med behörighet att ändra det här.'),
+    S.admin && h('p', { class: 'note', style: 'margin:-4px 0 6px 26px' }, 'Ändringen gäller från nästa gång datorn startar.'),
+    mtL,
+    h('label', null, 'Notiskanaler'),
+    ntL, ntfy,
+    h('div', { class: 'row', style: 'margin-top:6px' }, h('button', { class: 'btn', type: 'button', onclick: () => { ntfy.value = 'https://ntfy.sh/victor-' + Array.from(crypto.getRandomValues(new Uint8Array(9)), b => b.toString(36).padStart(2, '0')).join('').slice(0, 16); ntOn.checked = true; } }, 'Skapa hemligt ämne')),
+    h('p', { class: 'note' }, 'Installera appen ntfy på telefonen och prenumerera på samma ämne (det efter ntfy.sh/). Använd ett slumpat ämne: den som känner till det kan läsa notiserna.'),
+    dcL,
+    n.discord ? h('p', { style: 'margin:0 0 6px' }, 'Kopplad till webhooken ', h('b', null, n.discordName || 'okänt namn'), '.') : h('p', { class: 'note', style: 'margin:0 0 6px' }, 'Ingen Discord-kanal är kopplad.'),
+    dc,
+    h('p', { class: 'note' }, (n.discord ? 'Byta kanal eller server: ' : 'Koppla: ') + 'i Discord, öppna kanalens inställningar → Integrationer → Webhooks → Ny webhook → Kopiera URL, och klistra in den här. Webhookens namn är det som står som avsändare.'),
+    n.discord && h('div', { class: 'row', style: 'margin-top:0' }, h('button', { class: 'btn red', type: 'button', onclick: e => { dropDiscord = true; dc.value = ''; dcOn.checked = false; e.target.textContent = 'Tas bort när du sparar'; e.target.disabled = true; } }, 'Koppla bort Discord')),
+    h('label', null, 'Skicka notis när'), ev.map(([, l]) => l),
     n.error && h('p', { class: 'err' }, 'Senaste notisen gick inte fram: ' + n.error), err,
-    h('div', { class: 'row' }, h('button', { class: 'btn pri', onclick: () => sendIt(false) }, 'Spara'), h('button', { class: 'btn', onclick: () => sendIt(true) }, 'Spara och skicka test'),
-      n.discord ? h('button', { class: 'btn red', onclick: async () => { await call('POST', '/api/notify', { discord: '' }).catch(() => {}); poll(); closeModal(); } }, 'Ta bort Discord') : null)));
+    h('div', { class: 'row' }, h('button', { class: 'btn pri', onclick: () => sendIt(false) }, 'Spara'), h('button', { class: 'btn', onclick: () => sendIt(true) }, 'Spara och skicka test'))));
 }
 async function openEvents() {
   editing = true; let j; try { j = await call('GET', '/api/events'); } catch (v) { return toast(v.message); }
@@ -477,7 +500,8 @@ $('bSet').onclick = () => {
       try { await act('POST', '/api/steamcmd/install'); toast('Hämtar SteamCMD från Valve …'); closeModal(); } catch { } } }, 'Hämta och installera SteamCMD')),
     h('label', null, 'Eller egen sökväg till SteamCMD'), sc,
     h('label', null, 'Mapp där spelservrar installeras'), dir,
-    h('div', { class: 'row' }, h('button', { class: 'btn', onclick: () => openSecurity().catch(e => toast(e.message)) }, 'Säkerhet och fjärråtkomst …')),
+    h('div', { class: 'row' }, h('button', { class: 'btn', onclick: () => openSecurity().catch(e => toast(e.message)) }, 'Säkerhet och fjärråtkomst …'),
+      h('button', { class: 'btn', onclick: openNotify }, 'Drift och notiser …')),
     err, h('div', { class: 'row' }, h('button', { class: 'btn pri', onclick: async () => {
       try { await call('POST', '/api/settings', { steamcmd: sc.value || undefined, serversDir: dir.value }); closeModal(); poll(); } catch (v) { err.textContent = v.message; } } }, 'Spara'))));
 };

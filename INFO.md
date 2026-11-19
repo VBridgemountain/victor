@@ -237,7 +237,9 @@ Utan autostart måste någon logga in och starta `node server.js` efter varje om
 - **Windows:** dubbelklicka på `installera-autostart.cmd` i mappen `server` och godkänn frågan om administratörsbehörighet. Programmet körs sedan i bakgrunden utan fönster. Ta bort med `ta-bort-autostart.cmd`.
 - **Linux:** `sudo sh autostart-linux.sh` (ta bort med `--remove`). Skapar en systemd-tjänst och tillåter panelen att starta om och stänga av datorn.
 
-Panelens kort **Drift** visar "Startar med datorn: ja" när det är på.
+Panelens kort **Drift** visar "Startar med datorn: ja" när det är på. När autostarten väl är installerad kan den slås av och på i panelen under **Drift och notiser …** (ändringen gäller från nästa omstart).
+
+**Underhållsläge** (under Drift och notiser) stänger tillfälligt av all automatik: ingen omstart vid krasch, inga schemalagda omstarter, säkerhetskopior eller uppdateringar, och inga notiser utom när datorn startar. Bra när du själv mekar med servern.
 
 Programmet körs då som SYSTEM (Windows). Spel som sparar i användarens AppData hamnar därför i systemkontots mapp. Mallen för Valheim använder `-savedir "saves"` så att världen hamnar i serverns egen mapp.
 
@@ -276,13 +278,15 @@ Kopiorna ligger i `server/data/backups/`. De skyddar mot trasiga uppdateringar o
 
 ## 7d. Notiser till telefonen
 
-Kortet **Drift → Notiser …**
+Kortet **Drift → Drift och notiser …** (finns också under Inställningar). Där slår du av och på varje kanal, byter Discord-kanal och väljer vilka händelser som ska skickas.
 
 - **ntfy** (enklast): installera appen *ntfy* på telefonen. Tryck **Skapa hemligt ämne** i panelen, spara, och prenumerera på samma ämne i appen. Ämnesnamnet fungerar som lösenord, så använd det slumpade.
-- **Discord**: klistra in en webhook-adress (Serverinställningar → Integrationer → Webhooks).
+- **Discord**: klistra in en webhook-adress (kanalens inställningar → Integrationer → Webhooks → Ny webhook → Kopiera URL). Panelen kontrollerar att webhooken finns och visar dess namn. **Byta kanal eller Discord-server:** skapa en webhook där och klistra in den nya adressen. **Koppla bort Discord** tar bort den helt.
 - **Spara och skicka test** visar direkt om det fungerar.
 
-Du får notiser när en spelserver kraschar eller inte kan startas, när disken eller minnet tar slut, när en säkerhetskopia eller uppdatering misslyckas, och när servern startat igen efter ett avbrott. Vanliga händelser (automatiska starter, uppdateringar, återställningar) skickas bara om du kryssar i det. Allt syns också under **Händelser …** i panelen.
+Du får notiser när en spelserver kraschar eller inte kan startas, när disken eller minnet tar slut, när en säkerhetskopia eller uppdatering misslyckas, och när servern startat igen efter ett avbrott. Under **Skicka notis när** kryssar du i vilka typer du vill ha: krascher, disk och minne, misslyckade säkerhetskopior och uppdateringar, servern igång igen, och vanliga händelser (av som standard).
+
+I spelserverns ruta kan **Starta med datorn**, **Omstart vid krasch** och **Autouppdatera** slås av och på direkt, utan att öppna Ändra. Allt syns också under **Händelser …** i panelen.
 
 ## 10. Säkerhet på servern
 
