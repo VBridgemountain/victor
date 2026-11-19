@@ -86,6 +86,10 @@ label{display:block;font:10px var(--mono);letter-spacing:.16em;text-transform:up
 .in{width:100%;background:rgba(var(--rgb),.06);border:1px solid var(--line);padding:8px 10px;outline:none;font-size:14px}
 .in:focus{border-color:var(--accent)} textarea.in{resize:vertical;font:12px/1.45 var(--mono)} select.in option{background:#04101a}
 .row{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px} .two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.ev{display:flex;gap:8px;font-size:12.5px;line-height:1.35;padding:4px 0;border-bottom:1px solid rgba(var(--rgb),.1)}.ev:last-child{border:0}
+.ev time{font:11px var(--mono);color:var(--dim);white-space:nowrap}.ev.bad span{color:var(--warn)}.ev.warn span{color:var(--wait)}
+.chk{display:flex;align-items:center;gap:8px;margin:8px 0;font-size:13.5px;cursor:pointer;text-transform:none;letter-spacing:0;color:var(--text);font-family:inherit}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}.chips span{font:10px var(--mono);letter-spacing:.1em;border:1px solid var(--line);color:var(--dim);padding:2px 7px}
 .log{margin:10px 0 0;padding:10px;background:#010409;border:1px solid var(--line);font:11px/1.45 var(--mono);height:230px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;user-select:text;color:#b9d6e2}
 .err{color:var(--warn);font-size:13px;min-height:18px;margin-top:8px}
 #toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:50;background:rgba(2,8,14,.95);border:1px solid var(--warn);color:#fff;padding:9px 16px;font-size:13px;display:none;max-width:calc(100vw - 30px)}
@@ -117,6 +121,7 @@ label{display:block;font:10px var(--mono);letter-spacing:.16em;text-transform:up
   <div class="col">
     <section class="w"><h2>System <i id="sysOs"></i></h2><div class="wb" id="sys"></div></section>
     <section class="w"><h2>Nätverk</h2><div class="wb" id="net"></div></section>
+    <section class="w"><h2>Drift <i id="pwrSvc"></i></h2><div class="wb" id="pwr"></div></section>
   </div>
   <div class="mid"></div>
   <div class="col">
@@ -146,6 +151,8 @@ const fmtDur = s => { s = Math.floor(s); const d = Math.floor(s / 86400), hh = M
 // bygger bara om när innehållet faktiskt ändrats, så att knappar inte byts ut mitt i ett klick
 const changed = (el, key) => { if (el._key === key) return false; el._key = key; return true; };
 const put = (el, ...kids) => el.replaceChildren(...h('div', null, kids).childNodes);
+const fmtTime = t => new Date(t).toLocaleString('sv-SE', { dateStyle: 'short', timeStyle: 'short' });
+const hourSel = (v, off) => h('select', { class: 'in' }, h('option', { value: -1, selected: v < 0 }, off), Array.from({ length: 24 }, (_, i) => h('option', { value: i, selected: v === i }, String(i).padStart(2, '0') + ':00')));
 function toast(t) { const e = $('toast'); e.textContent = t; e.style.display = 'block'; clearTimeout(toast.t); toast.t = setTimeout(() => e.style.display = 'none', 5000); }
 
 async function call(method, url, data) {
@@ -195,6 +202,7 @@ async function poll() {
 setInterval(poll, 2500);
 
 const stateOf = s => s.job === 'update' ? ['busy', 'Installerar / uppdaterar …'] : s.job === 'check' ? ['busy', 'Söker uppdatering …']
+  : s.job === 'backup' ? ['busy', 'Säkerhetskopierar …'] : s.job === 'restore' ? ['busy', 'Återställer …']
   : s.stopping ? ['busy', 'Stoppar …'] : s.online ? ['online', `Online · ${s.query.players}/${s.query.max} spelare`]
   : s.running ? (s.queryPort ? ['busy', 'Startar · svarar inte än'] : ['online', 'Igång']) : !s.ready ? ['', 'Inte installerad'] : ['', 'Stoppad'];
 
@@ -222,6 +230,19 @@ function render() {
     h('div', { class: 'kv' }, h('span', null, 'Mottaget'), h('span', null, fmtB(s.net.rx))),
     h('p', { class: 'note' }, 'Summorna räknas från att agenten startades, för ' + fmtDur((Date.now() - s.net.since) / 1000) + ' sedan.'));
   drawSpark(s.net.hist);
+  const pw = s.power;
+  $('pwrSvc').textContent = pw.service ? 'autostart' : '';
+  if (changed($('pwr'), JSON.stringify([pw.bootTime, pw.downFrom, pw.autostart, s.events.slice(0, 5), s.notify]))) put($('pwr'),
+    h('div', { class: 'kv' }, h('span', null, 'Datorn startad'), h('span', null, fmtTime(pw.bootTime))),
+    pw.downFrom ? h('div', { class: 'kv' }, h('span', null, 'Senaste avbrott'), h('span', null, `${fmtTime(pw.downFrom)} – ${fmtTime(pw.bootTime > pw.downFrom ? pw.bootTime : pw.agentStart)}`)) : null,
+    pw.downFrom ? h('p', { class: 'note', style: 'margin:2px 0 6px' }, 'Orsak: ' + pw.reason + '.') : null,
+    h('div', { class: 'kv' }, h('span', null, 'Startar med datorn'), h('span', { style: pw.autostart ? 'color:var(--ok)' : 'color:var(--wait)' }, pw.autostart ? 'ja' : 'nej')),
+    !pw.autostart && h('p', { class: 'note', style: 'margin:2px 0 6px' }, s.platform === 'win' ? 'Kör installera-autostart.cmd i mappen server på serverdatorn, så startar allt av sig självt efter strömavbrott och omstarter.' : 'Kör sudo sh autostart-linux.sh i mappen server på serverdatorn.'),
+    h('div', { class: 'kv' }, h('span', null, 'Notiser till telefonen'), h('span', { style: s.notify.ntfy || s.notify.discord ? 'color:var(--ok)' : '' }, s.notify.error ? 'fel' : s.notify.ntfy || s.notify.discord ? 'på' : 'av')),
+    h('div', { class: 'row' }, h('button', { class: 'btn', onclick: () => openPower('restart') }, 'Starta om datorn'), h('button', { class: 'btn red', onclick: () => openPower('shutdown') }, 'Stäng av')),
+    h('div', { class: 'row', style: 'margin-top:8px' }, h('button', { class: 'btn', onclick: openNotify }, 'Notiser …'), h('button', { class: 'btn', onclick: openEvents }, 'Händelser …')),
+    h('label', null, 'Senaste händelser'),
+    s.events.length ? s.events.slice(0, 5).map(e => h('div', { class: 'ev ' + e.level }, h('time', null, fmtTime(e.t)), h('span', null, e.text))) : h('p', { class: 'note', style: 'margin:0' }, 'Inget har hänt än.'));
 
   $('srvCount').textContent = s.servers.length || '';
   if (changed($('srvs'), JSON.stringify(s.servers.map(x => [x.name, stateOf(x), x.updateAvailable, x.ready])))) put($('srvs'), (s.servers.length ? s.servers.map(x => { const [c, t] = stateOf(x);
@@ -285,11 +306,16 @@ function fillServer(x) {
           [...x.players].sort((a, b) => b.secs - a.secs).map(p => h('tr', null, h('td', { style: 'max-width:260px' }, p.name || '(ansluter …)'), h('td', null, p.score), h('td', null, fmtDur(p.secs))))))
       : h('p', { class: 'note', style: 'margin-top:0' }, x.players ? 'Ingen är ansluten just nu.' : 'Spelet lämnar inte ut någon spelarlista.')),
     x.jobText && !x.job && h('div', { class: 'err' }, x.jobText),
+    h('div', { class: 'chips' }, x.autostart && h('span', null, 'STARTAR MED DATORN'), x.autorestart && h('span', null, 'OMSTART VID KRASCH'),
+      x.restartAt >= 0 && h('span', null, 'OMSTART ' + String(x.restartAt).padStart(2, '0') + ':00'), x.autoUpdate && h('span', null, 'AUTOUPPDATERAS'),
+      x.backupDir && h('span', null, x.backupAt >= 0 ? 'BACKUP ' + String(x.backupAt).padStart(2, '0') + ':00' : 'BACKUP MANUELL'),
+      x.backupDir && h('span', null, x.backups + ' KOPIOR' + (x.lastBackup ? ' · SENAST ' + fmtTime(x.lastBackup) : ''))),
     h('div', { class: 'row' },
       x.running ? h('button', { class: 'btn red', disabled: busy, onclick: () => P('stop') }, 'Stoppa') : h('button', { class: 'btn pri', disabled: busy || !x.ready, onclick: () => { logKind = 'game'; P('start'); } }, 'Starta'),
       h('button', { class: 'btn', disabled: busy || x.running, onclick: () => { logKind = 'steam'; P('update'); } }, x.installed ? 'Uppdatera' : 'Installera'),
       h('button', { class: 'btn', disabled: busy, onclick: () => { logKind = 'steam'; P('check'); } }, 'Sök uppdatering'),
       h('button', { class: 'btn', onclick: () => editServer(x) }, 'Ändra'),
+      h('button', { class: 'btn', disabled: busy, onclick: () => openBackups(x) }, 'Säkerhetskopior'),
       h('button', { class: 'btn', onclick: () => { logKind = logKind === 'game' ? 'steam' : 'game'; fillServer(x); loadLog(); } }, logKind === 'game' ? 'Visa SteamCMD-logg' : 'Visa serverlogg')),
     !S.steamcmd.path && h('p', { class: 'note' }, 'SteamCMD är inte installerat än. Installera det under Inställningar för att kunna hämta spelservern.'),
     h('label', null, logKind === 'game' ? 'Serverns utskrift' : 'SteamCMD'));
@@ -300,12 +326,17 @@ function editServer(x) {
     tpl: h('select', { class: 'in' }, h('option', { value: '' }, 'Eget spel (ange app-ID själv)'), S.templates.map(t => h('option', { value: t.key }, t.name))),
     name: h('input', { class: 'in', maxlength: 60 }), appId: h('input', { class: 'in', inputmode: 'numeric' }),
     cmd: h('textarea', { class: 'in', rows: 3, spellcheck: 'false' }), port: h('input', { class: 'in', inputmode: 'numeric' }),
-    queryPort: h('input', { class: 'in', inputmode: 'numeric' }), dir: h('input', { class: 'in', placeholder: 'tom = ' + S.serversDir }) }, err = h('div', { class: 'err' });
-  if (x) { f.name.value = x.name; f.appId.value = x.appId; f.cmd.value = x.cmd; f.port.value = x.port || ''; f.queryPort.value = x.queryPort || ''; }
+    queryPort: h('input', { class: 'in', inputmode: 'numeric' }), dir: h('input', { class: 'in', placeholder: 'tom = ' + S.serversDir }),
+    autostart: h('input', { type: 'checkbox', checked: x ? x.autostart : true }), autorestart: h('input', { type: 'checkbox', checked: x ? x.autorestart : true }),
+    autoUpdate: h('input', { type: 'checkbox', checked: x ? x.autoUpdate : false }), restartAt: hourSel(x ? x.restartAt : -1, 'Ingen daglig omstart'),
+    backupDir: h('input', { class: 'in', placeholder: 't.ex. saves (relativt till serverns mapp)' }), backupAt: hourSel(x ? x.backupAt : 4, 'Bara manuellt'),
+    backupKeep: h('input', { class: 'in', inputmode: 'numeric', value: x ? x.backupKeep : 7 }) }, err = h('div', { class: 'err' });
+  if (x) { f.name.value = x.name; f.appId.value = x.appId; f.cmd.value = x.cmd; f.port.value = x.port || ''; f.queryPort.value = x.queryPort || ''; f.backupDir.value = x.backupDir; }
   f.tpl.onchange = () => { const t = S.templates.find(v => v.key === f.tpl.value); if (!t) return;
-    f.name.value = t.name; f.appId.value = t.appId; f.cmd.value = win ? t.win : t.linux; f.port.value = t.port; f.queryPort.value = t.queryPort || ''; };
+    f.name.value = t.name; f.appId.value = t.appId; f.cmd.value = win ? t.win : t.linux; f.port.value = t.port; f.queryPort.value = t.queryPort || ''; f.backupDir.value = t.backup || ''; };
   const go = async e => { e.preventDefault(); err.textContent = '';
-    try { const j = await call('POST', '/api/servers', { id: x && x.id, name: f.name.value, appId: f.appId.value, cmd: f.cmd.value, port: f.port.value, queryPort: f.queryPort.value, dir: isNew ? f.dir.value : undefined });
+    try { const j = await call('POST', '/api/servers', { id: x && x.id, name: f.name.value, appId: f.appId.value, cmd: f.cmd.value, port: f.port.value, queryPort: f.queryPort.value, dir: isNew ? f.dir.value : undefined, autostart: f.autostart.checked, autorestart: f.autorestart.checked, autoUpdate: f.autoUpdate.checked,
+      restartAt: f.restartAt.value, backupDir: f.backupDir.value, backupAt: f.backupAt.value, backupKeep: f.backupKeep.value });
       await poll(); openServer(j.id); } catch (v) { err.textContent = v.message; } };
   modal(isNew ? 'Ny spelserver' : 'Ändra spelserver', h('form', { onsubmit: go },
     isNew && [h('label', null, 'Mall'), f.tpl],
@@ -316,12 +347,83 @@ function editServer(x) {
     h('div', { class: 'two' }, h('div', null, h('label', null, 'Spelport'), f.port), h('div', null, h('label', null, 'Port för statusförfrågan'), f.queryPort)),
     h('p', { class: 'note' }, 'Statusförfrågan (Steams A2S) visar om servern är online och hur många som spelar. Lämna tom om spelet saknar stöd.'),
     isNew && [h('label', null, 'Mapp (valfritt)'), f.dir],
+    h('label', null, 'Drift'),
+    h('label', { class: 'chk' }, f.autostart, 'Starta med datorn (efter omstart eller strömavbrott)'),
+    h('label', { class: 'chk' }, f.autorestart, 'Starta om automatiskt om den kraschar'),
+    h('label', { class: 'chk' }, f.autoUpdate, 'Uppdatera automatiskt när ingen spelar (säkerhetskopia tas först)'),
+    h('div', { class: 'two' }, h('div', null, h('label', null, 'Daglig omstart'), f.restartAt), h('div', null, h('label', null, 'Daglig säkerhetskopia'), f.backupAt)),
+    h('label', null, 'Mapp med spelvärlden (det som säkerhetskopieras)'), f.backupDir,
+    h('div', { class: 'two' }, h('div', null, h('label', null, 'Antal kopior att spara'), f.backupKeep), h('div')),
+    h('p', { class: 'note' }, 'Automatisk uppdatering körs vid den dagliga omstartstiden, eller 05:00 om ingen är vald. Före varje uppdatering tas en säkerhetskopia om en mapp är vald.'),
     err, h('div', { class: 'row' }, h('button', { class: 'btn pri' }, 'Spara'),
       !isNew && h('button', { class: 'btn red', type: 'button', onclick: async () => {
         if (!confirm(`Ta bort "${x.name}" ur panelen?\nSpelfilerna i ${x.dir} ligger kvar på disken.`)) return;
         try { await act('DELETE', `/api/servers/${x.id}`); closeModal(); } catch { } } }, 'Ta bort ur panelen'))));
 }
 $('bAdd').onclick = () => S && editServer(null);
+
+async function openBackups(x) {
+  editing = true; clearInterval(modalTimer);
+  const box = h('div'), err = h('div', { class: 'err' });
+  const draw = async () => {
+    let j; try { j = await call('GET', `/api/servers/${x.id}/backups`); } catch (v) { err.textContent = v.message; return; }
+    const cur = S.servers.find(v => v.id === x.id) || x;
+    put(box,
+      h('p', { class: 'note', style: 'margin-top:0' }, j.source ? 'Säkerhetskopierar ' + j.source : 'Ingen mapp med spelvärlden är vald. Välj den under Ändra.'),
+      h('div', { class: 'row', style: 'margin-top:0' }, h('button', { class: 'btn pri', disabled: !j.source, onclick: async e => { e.target.disabled = true; e.target.textContent = 'Säkerhetskopierar …'; err.textContent = '';
+        try { await call('POST', `/api/servers/${x.id}/backup`); } catch (v) { err.textContent = v.message; } draw(); poll(); } }, 'Säkerhetskopiera nu')),
+      err,
+      h('label', null, 'Sparade kopior'),
+      j.backups.length ? h('div', { class: 'ports', style: 'max-height:280px;border:1px solid var(--line)' }, h('table', null, h('tr', null, ['Tid', 'Storlek', ''].map(t => h('th', null, t))),
+        j.backups.map(b => h('tr', null, h('td', { title: b.name }, fmtTime(b.time) + (/fore-uppdatering/.test(b.name) ? ' · före uppdatering' : /daglig/.test(b.name) ? ' · daglig' : '')),
+          h('td', null, fmtB(b.size)), h('td', null, h('button', { class: 'mini', disabled: cur.running, title: cur.running ? 'Stoppa servern först' : '', onclick: async () => {
+            if (!confirm(`Återställ ${x.name} till kopian från ${fmtTime(b.time)}?\n\nDet nuvarande sparas som "${(j.source.split(/[\\/]/).pop())}.fore-aterstallning" bredvid, så att det går att ångra för hand.`)) return;
+            err.textContent = ''; try { await call('POST', `/api/servers/${x.id}/restore`, { name: b.name }); toast('Återställd.'); } catch (v) { err.textContent = v.message; } draw(); } }, 'Återställ'))))))
+        : h('p', { class: 'note' }, 'Inga kopior än.'),
+      cur.running && j.backups.length ? h('p', { class: 'note' }, 'Stoppa servern för att kunna återställa.') : null,
+      h('div', { class: 'row' }, h('button', { class: 'btn', onclick: () => openServer(x.id) }, 'Tillbaka')));
+  };
+  modal('Säkerhetskopior · ' + x.name, box); draw();
+}
+function openPower(action) {
+  editing = true;
+  const pw = h('input', { class: 'in', type: 'password', autocomplete: 'current-password' }), code = h('input', { class: 'in', inputmode: 'numeric', maxlength: 7, placeholder: '6 siffror' }), err = h('div', { class: 'err' });
+  const rs = action === 'restart';
+  modal(rs ? 'Starta om datorn' : 'Stäng av datorn', h('form', { onsubmit: async e => { e.preventDefault(); err.textContent = '';
+      try { await call('POST', '/api/power', { action, password: pw.value, code: code.value }); closeModal();
+        toast(rs ? 'Datorn startas om. Panelen är borta en stund och kommer tillbaka av sig själv om autostart är på.' : 'Datorn stängs av. Den måste startas på plats, med Wake-on-LAN eller av BIOS efter strömavbrott.'); }
+      catch (v) { err.textContent = v.message; } } },
+    h('p', null, rs ? 'Spelservrarna stängs och datorn startas om om några sekunder. De servrar som var igång startar igen efteråt om de har "Starta med datorn" eller "Starta om vid krasch".'
+                    : 'Spelservrarna stängs och datorn stängs av. Panelen går inte att nå förrän datorn startas igen.'),
+    !S.power.autostart && h('p', { class: 'err' }, 'Autostart är inte påslagen: efter omstarten måste programmet startas på serverdatorn.'),
+    h('label', null, 'Bekräfta med ditt lösenord'), pw, S.totpOn ? [h('label', null, 'Kod från autentiseringsappen'), code] : null, err,
+    h('div', { class: 'row' }, h('button', { class: 'btn ' + (rs ? 'pri' : 'red') }, rs ? 'Starta om' : 'Stäng av'), h('button', { class: 'btn', type: 'button', onclick: closeModal }, 'Avbryt'))));
+}
+function openNotify() {
+  editing = true;
+  const n = S.notify, ntfy = h('input', { class: 'in', placeholder: 'https://ntfy.sh/ditt-hemliga-amne', value: n.ntfy }),
+        dc = h('input', { class: 'in', placeholder: n.discord ? '(sparad, klistra in en ny för att byta)' : 'https://discord.com/api/webhooks/…' }),
+        all = h('input', { type: 'checkbox', checked: n.all }), err = h('div', { class: 'err' });
+  const sendIt = async test => { err.textContent = '';
+    try { await call('POST', '/api/notify', { ntfy: ntfy.value.trim(), discord: dc.value.trim() || undefined, all: all.checked, test }); toast(test ? 'Testnotisen är skickad.' : 'Sparat.'); poll(); if (!test) closeModal(); }
+    catch (v) { err.textContent = v.message; } };
+  modal('Notiser till telefonen', h('div', null,
+    h('p', { style: 'margin-top:0' }, 'Få en notis när en spelserver kraschar, disken blir full, en säkerhetskopia misslyckas eller servern startar igen efter ett strömavbrott.'),
+    h('label', null, 'ntfy (enklast: gratis app för Android och iPhone)'), ntfy,
+    h('div', { class: 'row', style: 'margin-top:6px' }, h('button', { class: 'btn', type: 'button', onclick: () => { ntfy.value = 'https://ntfy.sh/victor-' + Array.from(crypto.getRandomValues(new Uint8Array(9)), b => b.toString(36).padStart(2, '0')).join('').slice(0, 16); } }, 'Skapa hemligt ämne')),
+    h('p', { class: 'note' }, 'Installera appen ntfy på telefonen, tryck + och prenumerera på samma ämne (det efter ntfy.sh/). Ämnesnamnet fungerar som lösenord: den som känner till det kan läsa notiserna, så använd ett slumpat.'),
+    h('label', null, 'Discord-webhook (valfritt)'), dc,
+    h('p', { class: 'note' }, 'Discord: Serverinställningar → Integrationer → Webhooks → Ny webhook → Kopiera URL.'),
+    h('label', { class: 'chk' }, all, 'Skicka även vanliga händelser (automatiska starter, uppdateringar, återställningar)'),
+    n.error && h('p', { class: 'err' }, 'Senaste notisen gick inte fram: ' + n.error), err,
+    h('div', { class: 'row' }, h('button', { class: 'btn pri', onclick: () => sendIt(false) }, 'Spara'), h('button', { class: 'btn', onclick: () => sendIt(true) }, 'Spara och skicka test'),
+      n.discord ? h('button', { class: 'btn red', onclick: async () => { await call('POST', '/api/notify', { discord: '' }).catch(() => {}); poll(); closeModal(); } }, 'Ta bort Discord') : null)));
+}
+async function openEvents() {
+  editing = true; let j; try { j = await call('GET', '/api/events'); } catch (v) { return toast(v.message); }
+  modal('Händelser', h('div', null, j.events.length ? h('div', { style: 'max-height:60vh;overflow:auto' }, j.events.map(e => h('div', { class: 'ev ' + e.level }, h('time', null, fmtTime(e.t)), h('span', null, e.text))))
+    : h('p', { class: 'note' }, 'Inget har hänt än.')));
+}
 
 // Säkerhet och fjärråtkomst: tvåstegsinloggning, senaste inloggningar och vägar in utifrån
 async function openSecurity() {

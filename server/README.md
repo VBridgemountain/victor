@@ -81,3 +81,15 @@ lista över det som behöver åtgärdas (full disk, spelserver som stannat ovän
 Nyckeln kan bara läsa översikten (`/api/summary`) och inte styra något. Från den publicerade appen krävs serverns
 https-adress. Ligger Cloudflare Access framför panelen behöver sökvägen `/api/summary` en egen Access-regel med Bypass,
 annars stoppas widgeten av inloggningsspärren.
+
+## Drift: autostart, strömavbrott, säkerhetskopior och notiser
+
+- **Autostart med datorn:** `installera-autostart.cmd` (Windows, kör som administratör) eller `sudo sh autostart-linux.sh` (Linux).
+  Då startar programmet utan inloggning efter omstarter och strömavbrott.
+- **Efter strömavbrott:** ställ in *Restore on AC Power Loss → Power On* i datorns BIOS så att datorn startar själv.
+- **Spelservrar:** per server kan man välja start med datorn, omstart vid krasch, daglig omstart, automatisk uppdatering
+  när ingen spelar, och dagliga säkerhetskopior av spelvärlden med återställning.
+- **Notiser:** ntfy eller Discord, under Drift → Notiser i panelen.
+- **Starta om / stäng av datorn** från panelen (kräver lösenordet igen).
+
+Steg för steg i [INFO.md](../INFO.md), avsnitt 7b–7d.

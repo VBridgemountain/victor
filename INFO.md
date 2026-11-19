@@ -21,6 +21,8 @@ Samlad guide för allt i det här repot. Kort översikt över vad som är vad fi
 15. [Felsökning](#15-felsökning)
 16. [Vad som inte är provat](#16-vad-som-inte-är-provat)
 
+Drift, strömavbrott, säkerhetskopior och notiser för servern står i avsnitt 7b–7d.
+
 ---
 
 ## 1. Två program
@@ -226,6 +228,62 @@ Knappen **Spelhall** i panelen. Spela egna spel i webbläsaren, på dator eller 
 
 ---
 
+## 7b. Drift: autostart, strömavbrott och omstart
+
+### Starta automatiskt med datorn (gör detta först)
+
+Utan autostart måste någon logga in och starta `node server.js` efter varje omstart. Med autostart startar programmet direkt när datorn startar, **utan att någon loggar in**, och Windows startar om det om det skulle stängas.
+
+- **Windows:** dubbelklicka på `installera-autostart.cmd` i mappen `server` och godkänn frågan om administratörsbehörighet. Programmet körs sedan i bakgrunden utan fönster. Ta bort med `ta-bort-autostart.cmd`.
+- **Linux:** `sudo sh autostart-linux.sh` (ta bort med `--remove`). Skapar en systemd-tjänst och tillåter panelen att starta om och stänga av datorn.
+
+Panelens kort **Drift** visar "Startar med datorn: ja" när det är på.
+
+Programmet körs då som SYSTEM (Windows). Spel som sparar i användarens AppData hamnar därför i systemkontots mapp. Mallen för Valheim använder `-savedir "saves"` så att världen hamnar i serverns egen mapp.
+
+### Efter strömavbrott
+
+1. **Datorn måste starta av sig själv när strömmen kommer tillbaka.** Det ställs in i datorns BIOS/UEFI: tryck Del eller F2 vid start, leta efter *Restore on AC Power Loss* / *AC Back* / *Power On after Power Failure* och välj **Power On**. Det kan inte styras från panelen.
+2. Med autostart startar V.I.C.T.O.R. Server av sig själv.
+3. Spelservrar med **Starta med datorn** startar efter cirka 15 sekunder.
+4. Du får en notis: "Servern är igång igen. Den var nere från … till …". Samma uppgift visas i kortet Drift.
+
+### Styra datorn från panelen
+
+Kortet **Drift** har **Starta om datorn** och **Stäng av**. Båda kräver lösenordet (och tvåstegskoden) igen. Spelservrarna stängs först och startar igen efter omstarten.
+
+**En avstängd dator kan inte startas från panelen**, eftersom programmet inte körs då. Vill du kunna starta den på distans: slå på *Wake-on-LAN* i BIOS och nätverkskortet, och väck datorn från en enhet som alltid är på i hemnätet (många routrar har Wake-on-LAN i sitt webbgränssnitt). Datorns MAC-adress behövs, den står i Windows under Inställningar → Nätverk → Egenskaper.
+
+Windows-uppdateringar som startar om datorn hanteras som ett strömavbrott: allt startar igen och du får en notis.
+
+## 7c. Spelservrar: automatik och säkerhetskopior
+
+Under **Ändra** på en spelserver:
+
+| Inställning | Gör |
+|---|---|
+| Starta med datorn | Startar servern när programmet startar, t.ex. efter strömavbrott |
+| Starta om automatiskt om den kraschar | Startar om efter 10 sekunder, högst tre gånger på 15 minuter. Därefter en notis i stället |
+| Uppdatera automatiskt när ingen spelar | Söker uppdatering dagligen (vid omstartstiden, annars 05:00). Tar säkerhetskopia, stoppar, uppdaterar och startar. Hoppar över om någon spelar |
+| Daglig omstart | Startar om servern vid vald tid |
+| Daglig säkerhetskopia | Säkerhetskopierar vid vald tid |
+| Mapp med spelvärlden | Det som säkerhetskopieras, relativt till serverns mapp (mallarna fyller i rätt mapp för Valheim, Palworld och Rust) |
+| Antal kopior att spara | Äldre kopior tas bort automatiskt |
+
+**Säkerhetskopior** (knappen i serverns ruta): **Säkerhetskopiera nu**, lista över kopior och **Återställ**. Återställning kräver att servern är stoppad. Det som fanns innan sparas som `<mapp>.fore-aterstallning` bredvid, så att en återställning går att ångra för hand. Före varje uppdatering tas en kopia automatiskt.
+
+Kopiorna ligger i `server/data/backups/`. De skyddar mot trasiga uppdateringar och misstag, men inte mot en trasig disk. Kopiera mappen till en annan disk eller molnet då och då.
+
+## 7d. Notiser till telefonen
+
+Kortet **Drift → Notiser …**
+
+- **ntfy** (enklast): installera appen *ntfy* på telefonen. Tryck **Skapa hemligt ämne** i panelen, spara, och prenumerera på samma ämne i appen. Ämnesnamnet fungerar som lösenord, så använd det slumpade.
+- **Discord**: klistra in en webhook-adress (Serverinställningar → Integrationer → Webhooks).
+- **Spara och skicka test** visar direkt om det fungerar.
+
+Du får notiser när en spelserver kraschar eller inte kan startas, när disken eller minnet tar slut, när en säkerhetskopia eller uppdatering misslyckas, och när servern startat igen efter ett avbrott. Vanliga händelser (automatiska starter, uppdateringar, återställningar) skickas bara om du kryssar i det. Allt syns också under **Händelser …** i panelen.
+
 ## 10. Säkerhet på servern
 
 Den som är inloggad i panelen kan köra program på servern. Skydda den därefter.
@@ -365,6 +423,9 @@ powershell -ExecutionPolicy Bypass -File desktop\android\build.ps1
 | Sidan är tom eller gammal | Ladda om med Ctrl+F5. Den installerade appen hämtar ny version vid nästa start med nät. |
 | "Första lösenordet måste väljas på servern" | Öppna `http://localhost:8787` på serverdatorn, eller använd `--set-password`. |
 | "För många försök" | Vänta den tid som anges. Spärren gäller per besökare. |
+| Panelen nås inte efter omstart | Autostart är inte påslagen (avsnitt 7b), eller datorn startade inte efter strömavbrottet (BIOS-inställningen). |
+| Ingen notis kommer | Tryck Spara och skicka test under Notiser. Kontrollera att telefonen prenumererar på exakt samma ntfy-ämne. |
+| Säkerhetskopian misslyckas | Mappen med spelvärlden finns inte än (servern har inte sparat), eller spelet låser filerna. Stoppa servern och försök igen. |
 | Tappat lösenordet | Stoppa programmet, kör `node server.js --set-password <nytt>` och starta igen. |
 | Tappat tvåstegskoden | Stoppa programmet, ta bort raden `"totp"` ur `server/data/config.json` och starta igen. |
 | Spelservern startar inte | Läs serverns utskrift i panelen. Kontrollera startkommandot och att installationen blev klar. |
@@ -383,7 +444,8 @@ powershell -ExecutionPolicy Bypass -File desktop\android\build.ps1
 Det här är byggt men inte provkört på riktigt, så räkna med att något kan behöva justeras:
 
 - **Servern på Linux.** Koden har stöd, men allt är provkört på Windows.
-- **SteamCMD:** hämtning, installation och uppdatering av riktiga spel, samt sökning efter ny version. Start, stopp, status och spelarlista är provade med en simulerad spelserver.
+- **SteamCMD:** hämtning, installation och uppdatering av riktiga spel, samt sökning efter ny version (även den automatiska uppdateringen). Start, stopp, status och spelarlista är provade med en simulerad spelserver.
+- **Autostart-skripten** (Windows och Linux), omstart och avstängning av datorn från panelen, och att notiser faktiskt kommer fram till ntfy och Discord. Automatisk omstart efter krasch, start efter ett simulerat strömavbrott, säkerhetskopiering och återställning är provade lokalt.
 - **Spelhallen med ett riktigt spel.** Emulatorn startar, men inget spel, ingen handkontroll och ingen telefon är provad.
 - **Åtkomst via Cloudflare Tunnel** och egen HTTPS med certifikat.
 - **Microsoft 365 live-data** mot en riktig Microsoft-miljö. Provad med simulerade svar.

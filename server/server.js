@@ -6,7 +6,7 @@
 const http = require('http'), https = require('https'), fs = require('fs'), path = require('path'), os = require('os'),
       crypto = require('crypto'), dgram = require('dgram'), { spawn, execFile } = require('child_process');
 
-const WIN = process.platform === 'win32';
+const WIN = process.platform === 'win32', SERVICE = process.argv.includes('--service');   // --service: startad av autostarten, utan fönster
 const ROOT = __dirname, PUB = path.join(ROOT, 'public'), DATA = path.join(ROOT, 'data'), LOGS = path.join(DATA, 'logs');
 fs.mkdirSync(LOGS, { recursive: true });
 const CFG_FILE = path.join(DATA, 'config.json');
@@ -134,15 +134,15 @@ async function samplePorts() {
 // ------------------------------------------------------------------ spelservrar
 // Mallarna är startförslag: kommandon och portar går att ändra i panelen efter att servern lagts till.
 const TEMPLATES = [
-  { key: 'valheim', name: 'Valheim', appId: 896660, port: 2456, queryPort: 2457,
-    win: 'valheim_server.exe -nographics -batchmode -name "Min server" -port 2456 -world "Dedicated" -password "byt-mig" -public 0',
-    linux: './valheim_server.x86_64 -nographics -batchmode -name "Min server" -port 2456 -world "Dedicated" -password "byt-mig" -public 0' },
+  { key: 'valheim', name: 'Valheim', appId: 896660, port: 2456, queryPort: 2457, backup: 'saves',
+    win: 'valheim_server.exe -nographics -batchmode -name "Min server" -port 2456 -world "Dedicated" -password "byt-mig" -public 0 -savedir "saves"',
+    linux: './valheim_server.x86_64 -nographics -batchmode -name "Min server" -port 2456 -world "Dedicated" -password "byt-mig" -public 0 -savedir "saves"' },
   { key: 'cs2', name: 'Counter-Strike 2', appId: 730, port: 27015, queryPort: 27015,
     win: 'game\\bin\\win64\\cs2.exe -dedicated -port 27015 +map de_dust2',
     linux: './game/bin/linuxsteamrt64/cs2 -dedicated -port 27015 +map de_dust2' },
-  { key: 'palworld', name: 'Palworld', appId: 2394010, port: 8211, queryPort: 0,
+  { key: 'palworld', name: 'Palworld', appId: 2394010, port: 8211, queryPort: 0, backup: 'Pal/Saved',
     win: 'PalServer.exe -port=8211', linux: './PalServer.sh -port=8211' },
-  { key: 'rust', name: 'Rust', appId: 258550, port: 28015, queryPort: 28016,
+  { key: 'rust', name: 'Rust', appId: 258550, port: 28015, queryPort: 28016, backup: 'server',
     win: 'RustDedicated.exe -batchmode +server.port 28015 +server.queryport 28016 +server.identity "victor" +server.hostname "Min server" +server.maxplayers 20 +server.worldsize 3000',
     linux: './RustDedicated -batchmode +server.port 28015 +server.queryport 28016 +server.identity "victor" +server.hostname "Min server" +server.maxplayers 20 +server.worldsize 3000' },
   { key: '7dtd', name: '7 Days to Die', appId: 294420, port: 26900, queryPort: 26900,
@@ -191,7 +191,7 @@ async function checkServer(s) {   // senaste version hos Steam, jämförs med de
 }
 function startServer(s) {
   if (alive(s.pid)) throw new Error('Servern är redan igång.');
-  if (R(s.id).job) throw new Error('Vänta tills SteamCMD är klar.');
+  if (R(s.id).job) throw new Error('Vänta tills pågående arbete (SteamCMD eller säkerhetskopia) är klart.');
   if (!s.cmd) throw new Error('Inget startkommando är angivet.');
   if (!fs.existsSync(sdir(s))) throw new Error('Servern är inte installerad än.');
   // Utskriften styrs till loggfilen av skalet självt. På Linux får servern ett eget processträd och fortsätter gå om
@@ -240,7 +240,7 @@ const a2sPlayers = port => a2sAsk(port, Buffer.from([255, 255, 255, 255, 0x55]),
 async function sampleServers() {
   for (const s of cfg.servers) {
     const r = R(s.id);
-    if (s.pid && !alive(s.pid)) { s.pid = 0; r.stopping = false; r.query = r.players = null; save(); }
+    if (s.pid && !alive(s.pid)) { s.pid = 0; r.stopping = false; r.query = r.players = null; save(); if (s.wanted && !r.job) crashed(s); }
     if (s.pid && s.queryPort) { r.query = await a2s(s.queryPort); r.players = r.query ? await a2sPlayers(s.queryPort) : null; }
   }
 }
@@ -250,8 +250,174 @@ function serverView(s) {
     ready: fs.existsSync(sdir(s)), running, stopping: !!r.stopping && running, startedAt: running ? s.startedAt : 0, pid: running ? s.pid : 0,
     online: running && !!r.query, query: running ? r.query || null : null, players: running && r.query ? r.players || null : null,
     job: r.job || null, jobText: r.jobText || '', installed, latest: r.latest || null, checkedAt: r.checkedAt || 0,
-    updateAvailable: !!(installed && r.latest && installed !== r.latest) };
+    updateAvailable: !!(installed && r.latest && installed !== r.latest),
+    autostart: !!s.autostart, autorestart: !!s.autorestart, autoUpdate: !!s.autoUpdate, restartAt: s.restartAt >= 0 ? s.restartAt : -1,
+    backupDir: s.backupDir || '', backupAt: s.backupAt >= 0 ? s.backupAt : -1, backupKeep: s.backupKeep || 7, lastBackup: s.lastBackup || 0, backups: listBackups(s).length };
 }
+
+// En spelserver som skulle vara igång har stannat. Med "starta om vid krasch" startas den igen, högst tre gånger på 15 minuter.
+function crashed(s) {
+  const r = R(s.id), now = Date.now(); r.crashes = (r.crashes || []).filter(t => now - t < 900000); r.crashes.push(now);
+  if (s.autorestart && r.crashes.length <= 3) {
+    event(`${s.name} stannade oväntat och startas om.`, 'warn');
+    setTimeout(() => { try { if (!alive(s.pid) && s.wanted) startServer(s); } catch (e) { event(`${s.name} kunde inte startas om: ${e.message}`, 'bad'); } }, 10000);
+  } else event(`${s.name} har stannat oväntat` + (s.autorestart ? ' flera gånger i rad och startas inte om automatiskt.' : '.'), 'bad');
+}
+// Väntar tills en server har stängts (högst en minut)
+const stopAndWait = async s => { stopServer(s); for (let i = 0; i < 60 && alive(s.pid); i++) await new Promise(r => setTimeout(r, 1000)); s.pid = alive(s.pid) ? s.pid : 0; };
+
+// ------------------------------------------------------------------ säkerhetskopior av spelvärldar
+// Mappen som ska sparas anges per server (relativt till serverns mapp). Kopiorna packas med tar, som finns i både Windows 10+ och Linux.
+const BACKUPS = path.join(DATA, 'backups');
+const bkSrc = s => s.backupDir ? path.resolve(sdir(s), s.backupDir) : null;
+const bkDir = s => path.join(BACKUPS, s.id);
+const runP = (cmd, args, timeout = 3600000) => new Promise((ok, fail) => execFile(cmd, args, { windowsHide: true, timeout, maxBuffer: 8 << 20 },
+  (e, out, err) => e ? fail(new Error(String(err || e.message).trim().split(/\r?\n/).slice(-2).join(' ').slice(0, 300) || 'misslyckades')) : ok(out)));
+const stamp = () => { const d = new Date(), z = n => String(n).padStart(2, '0'); return `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())}_${z(d.getHours())}${z(d.getMinutes())}${z(d.getSeconds())}`; };
+function listBackups(s) {
+  try { return fs.readdirSync(bkDir(s)).filter(f => f.endsWith('.tar.gz')).map(f => { const st = fs.statSync(path.join(bkDir(s), f)); return { name: f, size: st.size, time: st.mtimeMs }; })
+    .sort((a, b) => b.time - a.time); } catch { return []; }
+}
+async function backupServer(s, why = '') {
+  const src = bkSrc(s), r = R(s.id);
+  if (!src) throw new Error('Ingen mapp att säkerhetskopiera är vald för servern.');
+  if (!fs.existsSync(src)) throw new Error('Mappen finns inte än: ' + src);
+  if (r.job) throw new Error('Servern är upptagen just nu.');
+  fs.mkdirSync(bkDir(s), { recursive: true });
+  const file = path.join(bkDir(s), stamp() + (why ? '-' + why : '') + '.tar.gz');
+  r.job = 'backup';
+  try { await runP('tar', ['-czf', file, '-C', path.dirname(src), path.basename(src)]); }
+  catch (e) { fs.rmSync(file, { force: true }); throw new Error('Säkerhetskopian misslyckades: ' + e.message); }
+  finally { r.job = null; }
+  const keep = Math.max(1, s.backupKeep || 7);
+  for (const b of listBackups(s).slice(keep)) fs.rmSync(path.join(bkDir(s), b.name), { force: true });
+  s.lastBackup = Date.now(); save();
+  return path.basename(file);
+}
+async function restoreServer(s, name) {
+  const b = listBackups(s).find(x => x.name === name), src = bkSrc(s), r = R(s.id);
+  if (!b) throw new Error('Säkerhetskopian finns inte.');
+  if (!src) throw new Error('Ingen mapp att säkerhetskopiera är vald för servern.');
+  if (alive(s.pid)) throw new Error('Stoppa servern innan du återställer.');
+  if (r.job) throw new Error('Servern är upptagen just nu.');
+  r.job = 'restore';
+  const old = src + '.fore-aterstallning';   // det som fanns innan sparas en gång, så att en återställning går att ångra för hand
+  try {
+    fs.rmSync(old, { recursive: true, force: true });
+    if (fs.existsSync(src)) fs.renameSync(src, old);
+    try { await runP('tar', ['-xzf', path.join(bkDir(s), b.name), '-C', path.dirname(src)]); }
+    catch (e) { fs.rmSync(src, { recursive: true, force: true }); if (fs.existsSync(old)) fs.renameSync(old, src); throw new Error('Återställningen misslyckades, inget är ändrat: ' + e.message); }
+  } finally { r.job = null; }
+  event(`${s.name} återställdes till säkerhetskopian ${b.name}.`, 'info');
+}
+
+// ------------------------------------------------------------------ händelser och notiser till telefonen
+// Allt viktigt skrivs till events.log (visas i panelen) och kan skickas som notis via ntfy och/eller Discord.
+const EVENTS = path.join(LOGS, 'events.log');
+let notifyErr = '';
+function event(text, level = 'info') {
+  fs.appendFile(EVENTS, `${new Date().toISOString()}\t${level}\t${text.replace(/[\r\n\t]/g, ' ')}\n`, () => {});
+  if (level !== 'info' || (cfg.notify && cfg.notify.all)) notify(text, level).catch(() => {});
+}
+async function notify(text, level = 'info') {
+  const n = cfg.notify || {}, title = os.hostname() + ' · ' + (level === 'bad' ? 'Åtgärd behövs' : level === 'warn' ? 'Varning' : 'Info'), jobs = [];
+  const post = (url, obj) => fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(obj), signal: AbortSignal.timeout(10000) })
+    .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); });
+  if (n.ntfy) { const u = new URL(n.ntfy); jobs.push(post(u.origin, { topic: u.pathname.replace(/^\/+|\/+$/g, ''), title, message: text,
+    priority: level === 'bad' ? 5 : level === 'warn' ? 4 : 3, tags: [level === 'bad' ? 'rotating_light' : level === 'warn' ? 'warning' : 'information_source'] })); }
+  if (n.discord) jobs.push(post(n.discord, { username: 'V.I.C.T.O.R. Server', content: `**${title}**\n${text}` }));
+  if (!jobs.length) return;
+  try { await Promise.all(jobs); notifyErr = ''; } catch (e) { notifyErr = e.message; throw e; }
+}
+const recentEvents = (n = 30) => tail(EVENTS, n).split('\n').filter(Boolean).reverse().map(l => { const [t, level, text] = l.split('\t'); return { t, level, text }; });
+
+// Systemvarningar (disk, minne, processor) som både widgeten och notiserna använder
+function sysAlerts(d) {
+  const mem = 1 - os.freemem() / os.totalmem(), a = [], add = (level, text, key) => a.push({ level, text, key });
+  if (d && d.free / d.total < 0.05) add('bad', `Disken är nästan full: ${Math.round(d.free / 1e9)} GB ledigt.`, 'disk');
+  else if (d && d.free / d.total < 0.12) add('warn', `Det börjar bli ont om diskutrymme: ${Math.round(d.free / 1e9)} GB ledigt.`, 'disk');
+  if (mem > 0.93) add('bad', `Minnet är nästan slut (${Math.round(mem * 100)} % används).`, 'mem'); else if (mem > 0.85) add('warn', `Högt minnestryck (${Math.round(mem * 100)} % används).`, 'mem');
+  if (cpuAvg > 90) add('warn', `Processorn har legat på ${Math.round(cpuAvg)} % en längre stund.`, 'cpu');
+  return a;
+}
+const alerted = new Set();
+async function watchSystem() {   // meddelar en allvarlig systemvarning en gång, och igen först när den har gått över
+  const bad = sysAlerts(await disk()).filter(x => x.level === 'bad');
+  for (const x of bad) if (!alerted.has(x.key)) { alerted.add(x.key); event(x.text, 'bad'); }
+  for (const k of [...alerted]) if (!bad.some(x => x.key === k)) alerted.delete(k);
+}
+
+// ------------------------------------------------------------------ schema: daglig omstart, säkerhetskopia och uppdatering
+const ran = new Map();   // vad som redan körts i dag, så att inget körs två gånger
+const today = () => new Date().toDateString();
+async function scheduler() {
+  const now = new Date(), hr = now.getHours();
+  for (const s of cfg.servers) {
+    const once = (what, fn) => { const k = s.id + what; if (ran.get(k) === today()) return; ran.set(k, today()); fn().catch(e => event(`${s.name}: ${e.message}`, 'bad')); };
+    if (s.backupAt >= 0 && s.backupAt === hr && s.backupDir) once('backup', async () => { await backupServer(s, 'daglig'); });
+    if (s.restartAt >= 0 && s.restartAt === hr && alive(s.pid)) once('restart', async () => { await stopAndWait(s); startServer(s); event(`${s.name} startades om enligt schemat.`); });
+    if (s.autoUpdate && hr === (s.restartAt >= 0 ? s.restartAt : 5)) once('update', () => autoUpdate(s));
+  }
+}
+async function autoUpdate(s) {   // uppdaterar bara när ingen spelar; tar en säkerhetskopia först
+  const r = R(s.id);
+  await checkServer(s); const v = serverView(s);
+  if (!v.updateAvailable) return;
+  if (v.running && v.query && v.query.players > 0) { event(`${s.name} har en uppdatering men ${v.query.players} spelar just nu. Försöker igen i morgon.`, 'warn'); return; }
+  const was = v.running;
+  if (s.backupDir) await backupServer(s, 'fore-uppdatering');
+  if (was) await stopAndWait(s);
+  await updateServer(s);
+  if (r.jobText !== 'Klar') throw new Error('uppdateringen misslyckades: ' + r.jobText);
+  if (was) { s.wanted = true; startServer(s); }
+  event(`${s.name} uppdaterades till build ${installedBuild(s)}.`);
+}
+
+// ------------------------------------------------------------------ datorn: start, avbrott, omstart och avstängning
+// Agenten skriver en livstecken-fil varje minut. Vid start jämförs den med datorns starttid för att se hur länge servern var nere och varför.
+const HEART = path.join(DATA, 'heartbeat'), bootTime = Date.now() - os.uptime() * 1000, agentStart = Date.now();
+let power = { bootTime, agentStart, downFrom: 0, reason: '' };
+function startup() {
+  let last = 0; try { last = +fs.readFileSync(HEART, 'utf8') || 0; } catch { }
+  const planned = cfg.plannedPower && Date.now() - cfg.plannedPower.at < 30 * 60000 ? cfg.plannedPower : null;
+  delete cfg.plannedPower;
+  for (const s of cfg.servers) if (s.pid && (s.startedAt || 0) < bootTime) s.pid = 0;   // processnummer från före omstarten gäller inte längre
+  save();
+  const fmt = t => new Date(t).toLocaleString('sv-SE', { dateStyle: 'short', timeStyle: 'short' });
+  if (last && bootTime > last) {
+    power = { bootTime, agentStart, downFrom: last, reason: planned ? (planned.action === 'restart' ? 'omstart från panelen' : 'avstängning från panelen') : 'oväntad omstart, t.ex. strömavbrott eller Windows-uppdatering' };
+    event(`Servern är igång igen. Den var nere från ${fmt(last)} till ${fmt(bootTime)} (${power.reason}).`, planned ? 'info' : 'warn');
+  } else if (last && Date.now() - last > 180000) {
+    power = { bootTime, agentStart, downFrom: last, reason: 'programmet var stoppat' };
+    event(`V.I.C.T.O.R. Server startades igen efter att ha varit stoppad sedan ${fmt(last)}.`);
+  }
+  // spelservrar som ska starta med datorn, eller som var igång och ska startas om
+  const due = cfg.servers.filter(s => !alive(s.pid) && fs.existsSync(sdir(s)) && (s.autostart || (s.wanted && s.autorestart)));
+  if (due.length) setTimeout(() => { const ok = [];
+    for (const s of due) try { startServer(s); ok.push(s.name); } catch (e) { event(`${s.name} kunde inte startas: ${e.message}`, 'bad'); }
+    if (ok.length) event('Startade automatiskt: ' + ok.join(', ') + '.'); }, 15000);
+}
+const beat = () => fs.writeFile(HEART, String(Date.now()), () => {});
+// Startar agenten automatiskt med datorn? (Windows: schemalagd uppgift, Linux: systemd-tjänst)
+let autostart = { on: null, at: 0 };
+async function checkAutostart() {
+  if (Date.now() - autostart.at < 300000 && autostart.on != null) return autostart.on;
+  const on = WIN ? await new Promise(r => execFile('schtasks', ['/Query', '/TN', 'VICTOR Server'], { windowsHide: true }, e => r(!e)))
+                 : (await run('systemctl', ['is-enabled', 'victor-server'])).trim() === 'enabled';
+  autostart = { on, at: Date.now() }; return on;
+}
+function powerAction(action) {
+  cfg.plannedPower = { action, at: Date.now() }; save();
+  event(action === 'restart' ? 'Datorn startas om från panelen.' : 'Datorn stängs av från panelen.');
+  for (const s of cfg.servers) if (alive(s.pid)) { const w = s.wanted; stopServer(s); s.wanted = w; }   // "wanted" behålls, så att de startar igen efteråt
+  save();
+  setTimeout(() => {
+    const [cmd, args] = WIN ? ['shutdown', [action === 'restart' ? '/r' : '/s', '/t', '5', '/c', 'V.I.C.T.O.R. Server']]
+                            : ['systemctl', [action === 'restart' ? 'reboot' : 'poweroff']];
+    execFile(cmd, args, { windowsHide: true }, e => { if (e) { delete cfg.plannedPower; save(); event('Datorn kunde inte ' + (action === 'restart' ? 'startas om' : 'stängas av') + ': ' + e.message, 'bad'); } });
+  }, 4000);
+}
+const macs = () => Object.entries(os.networkInterfaces()).flatMap(([name, l]) => l.filter(a => !a.internal && a.family === 'IPv4' && a.mac && a.mac !== '00:00:00:00:00:00').map(a => ({ name, ip: a.address, mac: a.mac })));
 
 // SteamCMD hämtas från Valves egen adress när man trycker på knappen i panelen.
 let scInstall = null;
@@ -474,16 +640,15 @@ async function status() {
     net: { rx: net.rx, tx: net.tx, rxRate: net.rxRate, txRate: net.txRate, hist: net.hist, since: net.since, local: localIps(), publicIp: pubIp.ip },
     ports: ports.list, servers: cfg.servers.map(serverView), templates: TEMPLATES,
     steamcmd: { path: steamcmdPath(), installing: scInstall, error: scErr }, serversDir: cfg.serversDir, arcadePort: APORT,
+    power: { ...power, autostart: await checkAutostart(), service: SERVICE, macs: macs() }, events: recentEvents(12), totpOn: !!cfg.totp,
+    notify: { ntfy: (cfg.notify || {}).ntfy || '', discord: (cfg.notify || {}).discord ? 'satt' : '', all: !!(cfg.notify || {}).all, error: notifyErr },
   };
 }
 // Översikt för V.I.C.T.O.R.-widgeten på dator och telefon: bara läsning, med en egen läsnyckel i stället för inloggning.
 // Det som behöver åtgärdas samlas i "alerts" (level: 'bad' = åtgärd behövs, 'warn' = håll koll).
 async function summary(req) {
-  const d = await disk(), mem = 1 - os.freemem() / os.totalmem(), alerts = [], add = (level, text) => alerts.push({ level, text });
-  if (d && d.free / d.total < 0.05) add('bad', `Disken är nästan full: ${Math.round(d.free / 1e9)} GB ledigt.`);
-  else if (d && d.free / d.total < 0.12) add('warn', `Det börjar bli ont om diskutrymme: ${Math.round(d.free / 1e9)} GB ledigt.`);
-  if (mem > 0.93) add('bad', `Minnet är nästan slut (${Math.round(mem * 100)} % används).`); else if (mem > 0.85) add('warn', `Högt minnestryck (${Math.round(mem * 100)} % används).`);
-  if (cpuAvg > 90) add('warn', `Processorn har legat på ${Math.round(cpuAvg)} % en längre stund.`);
+  const d = await disk(), mem = 1 - os.freemem() / os.totalmem(), alerts = sysAlerts(d).map(({ level, text }) => ({ level, text })), add = (level, text) => alerts.push({ level, text });
+  if (Date.now() - agentStart < 3600000 && power.downFrom && power.reason !== 'programmet var stoppat') add('warn', `Servern startades nyss igen efter ${power.reason}.`);
   const servers = cfg.servers.map(s => { const v = serverView(s);
     if (s.wanted && !v.running) add('bad', `${v.name} har stannat oväntat.`);
     else if (v.running && v.queryPort && !v.online && Date.now() - v.startedAt > 180000) add('warn', `${v.name} är igång men svarar inte på statusförfrågan.`);
@@ -555,6 +720,24 @@ async function api(req, res, url) {
     if (b.arcadeUrl != null) { const u = clean(b.arcadeUrl, 200).replace(/\/+$/, ''); if (u && !/^https?:\/\/[\w.:-]+$/.test(u)) throw new Error('Spelhallens adress ska se ut som https://namn.exempel.se'); cfg.arcadeUrl = u; }
     save(); return send(res, 200, { ok: true });
   }
+  if (p === '/api/notify' && m === 'POST') {   // notisinställningar
+    const b = await body(req), n = cfg.notify = cfg.notify || {};
+    if (b.ntfy != null) { const u = clean(b.ntfy, 300); if (u && !/^https:\/\/[\w.-]+(:\d+)?\/[\w-]{6,64}\/?$/.test(u)) throw new Error('ntfy-adressen ska se ut som https://ntfy.sh/ditt-hemliga-amne'); n.ntfy = u; }
+    if (b.discord != null) { const u = clean(b.discord, 300); if (u && !/^https:\/\/(discord|discordapp)\.com\/api\/webhooks\/\d+\/[\w-]+$/.test(u)) throw new Error('Det ser inte ut som en Discord-webhook.'); n.discord = u; }
+    if (b.all != null) n.all = !!b.all;
+    save();
+    if (b.test) { try { await notify('Testnotis från V.I.C.T.O.R. Server. Notiserna fungerar.', 'info'); } catch (e) { throw new Error('Notisen gick inte fram: ' + e.message); } }
+    return send(res, 200, { ok: true });
+  }
+  if (p === '/api/power' && m === 'POST') {   // starta om eller stäng av datorn: kräver lösenordet (och koden) igen
+    const b = await body(req), ip = clientIp(req);
+    if (locked(ip)) return send(res, 429, { error: 'För många försök. Vänta en stund.' });
+    if (!checkPw(b.password || '') || (cfg.totp && !totpOk(cfg.totp, b.code))) { failed(ip); return send(res, 401, { error: cfg.totp ? 'Fel lösenord eller kod.' : 'Fel lösenord.' }); }
+    if (!['restart', 'shutdown'].includes(b.action)) return send(res, 400, { error: 'Okänd åtgärd.' });
+    logAccess(req, b.action === 'restart' ? 'omstart av datorn' : 'avstängning av datorn'); powerAction(b.action);
+    return send(res, 200, { ok: true });
+  }
+  if (p === '/api/events' && m === 'GET') return send(res, 200, { events: recentEvents(200) });
   if (p === '/api/steamcmd/install' && m === 'POST') { scErr = ''; installSteamcmd().catch(e => { scErr = e.message; }); return send(res, 200, { ok: true }); }
   if (p === '/api/servers' && m === 'POST') {   // lägg till eller ändra
     const b = await body(req), appId = +b.appId | 0;
@@ -564,9 +747,15 @@ async function api(req, res, url) {
     else if (alive(s.pid) && (clean(b.cmd, 2000) !== s.cmd)) return send(res, 400, { error: 'Stoppa servern innan startkommandot ändras.' });
     Object.assign(s, { name: clean(b.name, 60), appId, cmd: clean(b.cmd, 2000), port: portNum(b.port), queryPort: portNum(b.queryPort) });
     if (b.dir !== undefined) s.dir = b.dir ? path.resolve(clean(b.dir, 400)) : '';   // utelämnad vid ändring: mappen behålls
+    const hour = v => { const n = parseInt(v, 10); return n >= 0 && n <= 23 ? n : -1; };
+    if (b.backupDir !== undefined) { const d = clean(b.backupDir, 300); if (/(^|[\\/])\.\.([\\/]|$)/.test(d)) throw new Error('Mappen för säkerhetskopior får inte gå uppåt med ..'); s.backupDir = d; }
+    for (const k of ['autostart', 'autorestart', 'autoUpdate']) if (b[k] !== undefined) s[k] = !!b[k];
+    if (b.restartAt !== undefined) s.restartAt = hour(b.restartAt);
+    if (b.backupAt !== undefined) s.backupAt = hour(b.backupAt);
+    if (b.backupKeep !== undefined) s.backupKeep = Math.min(100, Math.max(1, parseInt(b.backupKeep, 10) || 7));
     save(); return send(res, 200, { ok: true, id: s.id });
   }
-  const sm = p.match(/^\/api\/servers\/([a-f0-9]{8})(?:\/(start|stop|update|check|log))?$/);
+  const sm = p.match(/^\/api\/servers\/([a-f0-9]{8})(?:\/(start|stop|update|check|log|backups|backup|restore))?$/);
   if (sm) {
     const s = cfg.servers.find(x => x.id === sm[1]); if (!s) return send(res, 404, { error: 'Servern finns inte.' });
     if (!sm[2] && m === 'DELETE') {   // tar bara bort den ur panelen; spelfilerna på disken rörs inte
@@ -574,10 +763,14 @@ async function api(req, res, url) {
       cfg.servers = cfg.servers.filter(x => x !== s); rt.delete(s.id); save(); return send(res, 200, { ok: true });
     }
     if (sm[2] === 'log' && m === 'GET') return send(res, 200, { text: tail(url.searchParams.get('kind') === 'steam' ? steamLog(s) : gameLog(s)) });
+    if (sm[2] === 'backups' && m === 'GET') return send(res, 200, { backups: listBackups(s), source: bkSrc(s) || '' });
+    if (sm[2] === 'backup' && m === 'POST') { const name = await backupServer(s, 'manuell'); return send(res, 200, { ok: true, name }); }
+    if (sm[2] === 'restore' && m === 'POST') { const b = await body(req); await restoreServer(s, String(b.name || '')); return send(res, 200, { ok: true }); }
     if (m !== 'POST') return send(res, 405, { error: 'Fel metod.' });
     if (sm[2] === 'start') startServer(s);
     else if (sm[2] === 'stop') stopServer(s);
-    else if (sm[2] === 'update') { if (alive(s.pid)) throw new Error('Stoppa servern innan den uppdateras.'); updateServer(s).catch(e => { R(s.id).jobText = e.message; }); }
+    else if (sm[2] === 'update') { if (alive(s.pid)) throw new Error('Stoppa servern innan den uppdateras.');
+      (async () => { if (s.backupDir && fs.existsSync(bkSrc(s))) await backupServer(s, 'fore-uppdatering').catch(e => event(`${s.name}: ${e.message}`, 'warn')); await updateServer(s); })().catch(e => { R(s.id).jobText = e.message; }); }
     else if (sm[2] === 'check') checkServer(s).catch(e => { R(s.id).jobText = e.message; });
     else return send(res, 404, { error: 'Okänt kommando.' });
     return send(res, 200, { ok: true });
@@ -604,5 +797,6 @@ mkServer(async (req, res) => {
   if (!cfg.pass) console.log('Inget lösenord är valt än: öppna ' + SCHEME + '://localhost:' + PORT + ' på den här datorn och välj ett.');
 });
 
-sampleCpu(); sampleNet();
+sampleCpu(); sampleNet(); startup(); beat();
 setInterval(sampleCpu, 2000); setInterval(sampleNet, 2000); setInterval(() => sampleServers().catch(() => {}), 8000);
+setInterval(beat, 60000); setInterval(() => scheduler().catch(() => {}), 60000); setInterval(() => watchSystem().catch(() => {}), 300000);
