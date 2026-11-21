@@ -151,6 +151,8 @@ body.tb #taskbar{display:flex} body.tb #readout{bottom:72px} body.tb #ideaBar{bo
 .gwh img{width:20px;height:20px;object-fit:cover;flex:none} .gwh span{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .gwh button{width:28px;height:26px;border:0;background:none;color:var(--dim);cursor:pointer;font-size:13px} .gwh button:hover{color:var(--accent)} .gwh .gx:hover{color:var(--warn)}
 .gw iframe{flex:1;width:100%;border:0;background:#000}
+.gwt{display:flex;gap:10px;align-items:center;padding:5px 10px;background:#0a1620;border-bottom:1px solid var(--line);font-size:12px;color:var(--text);flex:none}
+.gwt span{flex:1} .gwt button{background:none;border:1px solid var(--line);color:var(--text);cursor:pointer;font:11px var(--mono);padding:3px 8px}
 .gres{display:flex;gap:10px;align-items:center;padding:6px 4px;border-bottom:1px solid rgba(var(--rgb),.12)}
 .gres img{width:56px;height:42px;object-fit:cover;flex:none;background:#000} .gres div{flex:1;min-width:0} .gres b{display:block;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #taskbar .tbx{flex:none;width:26px;height:34px;border:0;background:none;color:var(--dim);cursor:pointer} #taskbar .tbx:hover{color:var(--accent)}
@@ -412,7 +414,7 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
    ===================================================================== */
 const KEY = 'jarvis-desktop-v1';
 // Den här versionen av appen. Höj den vid varje ny version; android/build.ps1 skriver den till version.json och APK:n.
-const APP_VERSION = '1.10.0';
+const APP_VERSION = '1.10.1';
 const UPDATE_URL = 'https://vbridgemountain.github.io/victor/desktop/';
 // Finns bara när sidan körs inne i Android-launchern: brygga till telefonens appar (se android/MainActivity.java)
 // Microsoft-inloggningen (widgeten Microsoft 365 admin) öppnas i ett eget fönster och kommer tillbaka hit med ett svar i adressen.
@@ -2087,6 +2089,9 @@ $('#bSettings').onclick = () => {
         el('label', { class: 'row', style: 'cursor:pointer;margin-top:10px;align-items:center' },
           el('input', { type: 'checkbox', class: 'chk', checked: !!state.winAuto, onchange: e => { state.winAuto = e.target.checked; save(); } }),
           'Ordna fönster automatiskt på skärmarna när de öppnas'),
+        el('label', { class: 'row', style: 'cursor:pointer;margin-top:10px;align-items:center' },
+          el('input', { type: 'checkbox', class: 'chk', checked: !!state.gamePopup, onchange: e => { state.gamePopup = e.target.checked; save(); } }),
+          'Spel i eget fönster (fungerar som hos archive.org, med mus och ljud) i stället för inne i ' + brand()),
         el('div', { class: 'row', style: 'margin-top:7px;flex-wrap:wrap' }, el('button', { class: 'btn', text: 'Ordna fönster …', onclick: openArrange }),
           el('button', { class: 'btn', text: 'Minimera alla fönster', onclick: () => { closeModal(); minimizeAll(); } })),
         el('p', { class: 'muted', style: 'margin:6px 0 0', text: 'Minimera alla lägger undan alla fönster utom ' + brand() + '. Knappen ▁ i aktivitetsfältet gör samma sak, och ett andra tryck visar dem igen.' })); })(),
@@ -2256,21 +2261,36 @@ setInterval(loadTaskbar, 2500); document.addEventListener('visibilitychange', lo
 // Archive.org kör spelen i sin egen emulator och tillåter att den visas inuti andra sidor (/embed/). Spelen ligger kvar hos dem.
 const gameWins = new Map(); let gameZ = 20;
 const gameId = v => { const m = String(v || '').trim().match(/archive\.org\/(?:details|embed)\/([^/?#\s]+)/i); const id = m ? m[1] : String(v || '').trim(); return /^[\w.-]{2,100}$/.test(id) ? id : ''; };
+// Eget fönster: spelet öppnas i ett vanligt webbläsarfönster utan V.I.C.T.O.R. runt sig, precis som hos archive.org.
+// Där fungerar mus (som fångas av spelet), tangentbord och ljud på samma sätt som på archive.org själv.
+function popGame(a) {
+  const w = 760, h = 600, x = Math.max(0, (screen.availWidth - w) / 2), y = Math.max(0, (screen.availHeight - h) / 2);
+  const win = window.open('https://archive.org/embed/' + encodeURIComponent(a.game), 'victor-' + a.game, `popup=yes,width=${w},height=${h},left=${x},top=${y}`);
+  if (!win) { toast('SPEL', 'Fönstret blockerades. Tillåt popup-fönster för sidan, eller stäng av "Spel i eget fönster" under Inställningar.', true); return false; }
+  win.focus(); return true;
+}
 function openGame(a) {
   const id = a.game; if (!id) return;
+  if (state.gamePopup && popGame(a)) return;
   const old = gameWins.get(id); if (old) { old.classList.remove('min'); old.style.zIndex = ++gameZ; return; }
   const w = Math.min(1024, innerWidth - 40), h = Math.min(800, innerHeight - 60), n = gameWins.size;
-  const frame = el('iframe', { src: 'https://archive.org/embed/' + encodeURIComponent(id), title: a.name, allow: 'fullscreen; gamepad; autoplay', allowFullscreen: true });
+  const frame = el('iframe', { src: 'https://archive.org/embed/' + encodeURIComponent(id), title: a.name, allow: 'fullscreen; gamepad; autoplay; pointer-lock', allowFullscreen: true,
+    onload: () => { try { frame.focus(); } catch { } } });
+  const tip = state.gameTipSeen ? null : el('div', { class: 'gwt' },
+    el('span', { text: 'Tryck på ▶ i mitten för att starta. Klicka sedan i spelet: då styr tangentbord och mus spelet (musen fångas, Esc släpper den) och ljudet startar vid första knapptryck. Fungerar inte menyer eller ljud: tryck ⧉ för att spela i ett eget fönster.' }),
+    el('button', { text: 'Uppfattat', onclick: e => { state.gameTipSeen = true; save(); e.target.parentNode.remove(); } }));
   const close = () => { node.remove(); gameWins.delete(id); };
   const head = el('div', { class: 'gwh', title: 'Dra för att flytta. Dra i nedre högra hörnet för att ändra storlek.' },
     el('img', { src: 'https://archive.org/services/img/' + encodeURIComponent(id), alt: '', draggable: false }), el('span', { text: a.name }),
     el('button', { text: '⛶', title: 'Helskärm', 'aria-label': 'Helskärm', onclick: () => (frame.requestFullscreen || frame.webkitRequestFullscreen).call(frame) }),
     el('button', { text: '—', title: 'Minimera', 'aria-label': 'Minimera', onclick: () => node.classList.toggle('min') }),
-    el('button', { text: '↗', title: 'Öppna på archive.org', 'aria-label': 'Öppna på archive.org', onclick: () => openUrl('https://archive.org/details/' + id) }),
+    el('button', { text: '⧉', title: 'Spela i ett eget fönster', 'aria-label': 'Spela i ett eget fönster', onclick: () => { if (popGame(a)) close(); } }),
+    el('button', { text: '↗', title: 'Öppna spelets sida på archive.org (med instruktioner och kontroller)', 'aria-label': 'Öppna på archive.org', onclick: () => openUrl('https://archive.org/details/' + id) }),
     el('button', { class: 'gx', text: '✕', title: 'Stäng spelet', 'aria-label': 'Stäng spelet', onclick: close }));
   const node = el('section', { class: 'gw', role: 'dialog', 'aria-label': a.name,
-    style: `left:${Math.max(0, (innerWidth - w) / 2 + n * 28)}px;top:${Math.max(0, (innerHeight - h) / 2 + n * 28)}px;width:${w}px;height:${h}px;z-index:${++gameZ}` }, head, frame);
+    style: `left:${Math.max(0, (innerWidth - w) / 2 + n * 28)}px;top:${Math.max(0, (innerHeight - h) / 2 + n * 28)}px;width:${w}px;height:${h}px;z-index:${++gameZ}` }, head, tip, frame);
   node.addEventListener('pointerdown', () => node.style.zIndex = ++gameZ);
+  node.addEventListener('pointerup', e => { if (!e.target.closest('button')) try { frame.focus(); } catch { } });   // tillbaka till spelet efter klick på ramen
   head.addEventListener('pointerdown', e => {
     if (e.target.closest('button')) return; e.preventDefault(); head.setPointerCapture(e.pointerId); frame.style.pointerEvents = 'none';
     const ox = e.clientX - node.offsetLeft, oy = e.clientY - node.offsetTop;
