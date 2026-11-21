@@ -47,18 +47,83 @@ async function loadApps() {
   });
   return apps.busy;
 }
-// Öppna fönster: processer som har ett synligt huvudfönster
+// Öppna fönster, som Windows aktivitetsfält visar dem: synliga, egna (inte verktygsfönster) och inte dolda.
+// En PowerShell hålls igång i bakgrunden så att listan kan läsas ofta utan att starta ett nytt program varje gång.
+const WIN_CS = `
+using System; using System.Text; using System.Runtime.InteropServices;
+public static class VWin {
+  delegate bool EnumProc(IntPtr h, IntPtr l);
+  [DllImport("user32.dll")] static extern bool EnumWindows(EnumProc f, IntPtr l);
+  [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr h);
+  [DllImport("user32.dll")] static extern IntPtr GetWindow(IntPtr h, uint c);
+  [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetWindowText(IntPtr h, StringBuilder s, int n);
+  [DllImport("user32.dll")] static extern int GetWindowTextLength(IntPtr h);
+  [DllImport("user32.dll")] static extern int GetWindowLong(IntPtr h, int i);
+  [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
+  [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
+  [DllImport("dwmapi.dll")] static extern int DwmGetWindowAttribute(IntPtr h, int a, out int v, int s);
+  [DllImport("user32.dll")] static extern bool ShowWindowAsync(IntPtr h, int c);
+  [DllImport("user32.dll")] static extern bool IsIconic(IntPtr h);
+  [DllImport("user32.dll")] static extern bool SetForegroundWindow(IntPtr h);
+  [DllImport("user32.dll")] static extern bool PostMessage(IntPtr h, uint m, IntPtr w, IntPtr l);
+  [DllImport("user32.dll")] static extern void keybd_event(byte k, byte s, uint f, UIntPtr e);
+  public static string List() {
+    var sb = new StringBuilder(); var fg = GetForegroundWindow();
+    EnumWindows((h, l) => {
+      if (!IsWindowVisible(h) || GetWindow(h, 4) != IntPtr.Zero) return true;
+      if ((GetWindowLong(h, -20) & 0x80) != 0) return true;
+      int cl; if (DwmGetWindowAttribute(h, 14, out cl, 4) == 0 && cl != 0) return true;
+      int n = GetWindowTextLength(h); if (n == 0) return true;
+      var t = new StringBuilder(n + 1); GetWindowText(h, t, n + 1);
+      uint pid; GetWindowThreadProcessId(h, out pid);
+      sb.Append(h.ToInt64()).Append('\\t').Append(pid).Append('\\t').Append(h == fg ? 1 : 0).Append('\\t').Append(t.ToString().Replace('\\t', ' ').Replace('\\r', ' ').Replace('\\n', ' ')).Append('\\n');
+      return true; }, IntPtr.Zero);
+    return sb.ToString();
+  }
+  public static bool Focus(long hw) { var h = new IntPtr(hw); if (IsIconic(h)) ShowWindowAsync(h, 9);
+    keybd_event(0x12, 0, 0, UIntPtr.Zero); keybd_event(0x12, 0, 2, UIntPtr.Zero);   // Alt-tryck: låter fönstret ta fokus från bakgrunden
+    return SetForegroundWindow(h); }
+  public static bool Close(long hw) { return PostMessage(new IntPtr(hw), 0x10, IntPtr.Zero, IntPtr.Zero); }   // WM_CLOSE: som att trycka på krysset
+}`;
+let worker = null;
+function psWorker() {   // en PowerShell som tar emot kommandon på rad och svarar med en slutmarkering
+  if (worker && !worker.dead) return worker;
+  const p = spawn('powershell', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', '-'], { windowsHide: true });
+  const w = worker = { p, buf: '', q: [], dead: false };
+  p.stdout.setEncoding('utf8');
+  p.stdout.on('data', d => { w.buf += d; while (w.q.length) { const { id, res } = w.q[0], k = w.buf.indexOf(id); if (k < 0) break; res(w.buf.slice(0, k)); w.buf = w.buf.slice(k + id.length); w.q.shift(); } });
+  p.on('exit', () => { w.dead = true; for (const { res } of w.q) res(''); w.q = []; });
+  p.on('error', () => { w.dead = true; });
+  const cs = path.join(DIR, 'vwin.cs'); fs.writeFileSync(cs, WIN_CS);
+  p.stdin.write(`[Console]::OutputEncoding = [Text.Encoding]::UTF8; Add-Type -Path '${cs.replace(/'/g, "''")}'\n`);
+  return w;
+}
+function psRun(script, timeout = 15000) {
+  const w = psWorker(), id = '@@SLUT' + crypto.randomBytes(6).toString('hex') + '@@';
+  return new Promise(res => {
+    const t = setTimeout(() => { try { w.p.kill(); } catch { } res(''); }, timeout);
+    w.q.push({ id, res: v => { clearTimeout(t); res(v); } });
+    w.p.stdin.write(`try { ${script} } catch { }; [Console]::Out.Write('${id}')\n`);
+  });
+}
 let wins = { list: [], at: 0, busy: null };
 async function loadWindows() {
-  if (Date.now() - wins.at < 3000) return wins.list;
-  if (!wins.busy) wins.busy = ps("Get-Process | Where-Object { $_.MainWindowTitle } | Select-Object Id, ProcessName, MainWindowTitle, Path, @{n='Mem';e={$_.WorkingSet64}} | ConvertTo-Json -Compress", [], 15000).then(out => {
-    const list = arr(out).filter(p => p.MainWindowTitle && !/^(TextInputHost|ApplicationFrameHost|SystemSettings)$/i.test(p.ProcessName))
-      .map(p => ({ pid: p.Id, name: p.ProcessName, title: p.MainWindowTitle, mem: p.Mem || 0, icon: p.Path || '' }))
-      .sort((a, b) => a.name.localeCompare(b.name) || a.title.localeCompare(b.title));
+  if (Date.now() - wins.at < 1500) return wins.list;
+  if (!wins.busy) wins.busy = psRun("$o = [VWin]::List(); $ids = @($o -split \"`n\" | Where-Object { $_ } | ForEach-Object { [int]($_.Split(\"`t\")[1]) } | Sort-Object -Unique); " +
+      "$pr = @{}; Get-Process -Id $ids -ErrorAction SilentlyContinue | ForEach-Object { $pr[[string]$_.Id] = @{ n = $_.ProcessName; p = $_.Path; m = $_.WorkingSet64 } }; " +
+      "[Console]::Out.Write((@{ w = $o; p = $pr } | ConvertTo-Json -Compress -Depth 4))").then(out => {
+    let j = {}; try { j = JSON.parse(out); } catch { }
+    const procs = j.p || {}, list = [];
+    for (const line of String(j.w || '').split('\n')) {
+      const [hwnd, pid, fg, ...t] = line.split('\t'), title = t.join(' ').trim(), pr = procs[pid] || {};
+      if (!hwnd || !title || title === 'Program Manager' || /^(TextInputHost|ShellExperienceHost|SearchHost|StartMenuExperienceHost)$/i.test(pr.n || '')) continue;
+      const uwp = /^ApplicationFrameHost$/i.test(pr.n || '');   // appar från Microsoft Store visas genom ApplicationFrameHost: använd titeln som namn
+      list.push({ hwnd: +hwnd, pid: +pid, fg: fg === '1', title, name: uwp ? title : (pr.n || 'okänt'), mem: pr.m || 0, icon: uwp ? '' : (pr.p || '') });
+    }
     wins = { list, at: Date.now(), busy: null };
     makeIcons(list.map(p => p.icon).filter(Boolean));
     return list;
-  });
+  }, () => { wins.busy = null; return wins.list; });
   return wins.busy;
 }
 // Ikoner hämtas från Windows på samma sätt som Utforskaren gör, och sparas som PNG. Körs i bakgrunden, några åt gången.
@@ -141,9 +206,11 @@ http.createServer(async (req, res) => {
       const a = (await loadApps()).find(x => x.id === b.id); if (!a) return send(res, 404, { error: 'Programmet finns inte i Start-menyn längre.' });
       spawn('explorer.exe', ['shell:AppsFolder\\' + a.id], { detached: true, stdio: 'ignore' }).unref(); return send(res, 200, { ok: true });
     }
-    if (p === '/api/focus') {   // lyfter fram ett öppet fönster
-      const pid = +b.pid | 0; if (!(await loadWindows()).some(w => w.pid === pid)) return send(res, 404, { error: 'Fönstret är stängt.' });
-      ps(`[void](New-Object -ComObject WScript.Shell).AppActivate(${pid})`, [], 8000); return send(res, 200, { ok: true });
+    if (p === '/api/focus' || p === '/api/close') {   // visa eller stäng ett fönster som finns i listan (inga andra)
+      wins.at = 0; const list = await loadWindows(), w = list.find(x => (b.hwnd ? x.hwnd === +b.hwnd : x.pid === (+b.pid | 0)));
+      if (!w) return send(res, 404, { error: 'Fönstret är redan stängt.' });
+      await psRun(`[void][VWin]::${p === '/api/focus' ? 'Focus' : 'Close'}(${w.hwnd})`, 8000); wins.at = 0;
+      return send(res, 200, { ok: true });
     }
     send(res, 404, { error: 'Finns inte.' });
   } catch (e) { if (!res.headersSent) send(res, 400, { error: e.message }); }
@@ -151,3 +218,5 @@ http.createServer(async (req, res) => {
   console.log(`V.I.C.T.O.R. datorbrygga igång.\n  Öppna http://127.0.0.1:${PORT} i webbläsaren för att se kopplingskoden.`);
   loadApps();
 }).on('error', e => { console.error(e.code === 'EADDRINUSE' ? 'Bryggan är redan igång (port ' + PORT + ' används).' : e.message); process.exit(1); });
+
+process.on('exit', () => { try { worker && worker.p.kill(); } catch { } });

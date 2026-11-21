@@ -60,7 +60,7 @@ De delar utseende men inte kod, och ingen av dem kräver den andra.
 
 **Ikoner för webbadresser:** som standard hämtas webbplatsens egen ikon direkt från sajten. Tryck på ikonen i Glober för att välja webbplatsens ikon, första bokstaven, en emoji eller en bildadress. Vill du inte ha webbplatsernas ikoner alls: Inställningar → stäng av "Hämta webbplatsernas egna ikoner".
 
-**Importera många länkar:** Glober eller Inställningar → **Importera länkar från .json**. Välj en fil (på datorn) eller klistra in innehållet (fungerar även på telefonen). Varje adress blir en app. Filen kan vara:
+**Importera många länkar och bokmärken:** Glober eller Inställningar → **Importera länkar eller bokmärken**. Exporterade bokmärken från webbläsaren (.html) fungerar: Chrome och Edge → Bokmärken → Hantera bokmärken → ⋮ → Exportera bokmärken; Firefox → Hantera bokmärken → Importera och säkerhetskopiera → Exportera bokmärken till HTML. Mapparna blir glober. Välj en fil (på datorn) eller klistra in innehållet (fungerar även på telefonen). Varje adress blir en app. Filen kan vara:
 
 - en lista med adresser: `["https://github.com", "youtube.com"]`
 - en lista med appar: `[{"name": "GitHub", "url": "https://github.com", "icon": "🐙"}]`
@@ -116,6 +116,7 @@ En webbsida kan inte se datorns program. Datorbryggan är ett litet hjälpprogra
 - Glober → **+ Lägg till program från datorn**: samma lista som Start-menyn. Tryck för att lägga i globen, tryck igen för att ta bort.
 - Klicka på programmet i globen för att starta det.
 - Widgeten **Öppna program** visar öppna fönster.
+- **Aktivitetsfältet** längst ner visar alla öppna fönster, som Windows aktivitetsfält. Klicka för att visa ett fönster, ✕ (eller högerklick) för att stänga det, som att trycka på dess eget kryss. Flera fönster från samma program samlas, och ett klick visar en lista att välja i. Dölj fältet med ✕ längst till höger; visa det igen under Inställningar → Datorbrygga.
 
 **Starta automatiskt vid inloggning**
 

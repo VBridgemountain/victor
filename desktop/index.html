@@ -116,6 +116,20 @@ textarea.in{resize:vertical;line-height:1.45;font-family:inherit;display:block}
 #ideaBar.on{display:flex}
 #ideaBar .in{background:rgba(2,8,14,.85)}
 #levels{position:fixed;right:22px;bottom:20px;z-index:6;display:flex;gap:4px}
+#taskbar{position:fixed;left:18px;right:280px;bottom:14px;z-index:7;display:none;align-items:center;gap:6px;height:44px;padding:4px 6px;
+  background:rgba(2,8,14,.82);border:1px solid var(--line);backdrop-filter:blur(8px);clip-path:polygon(8px 0,100% 0,100% calc(100% - 8px),calc(100% - 8px) 100%,0 100%,0 8px)}
+body.tb #taskbar{display:flex} body.tb #readout{bottom:72px} body.tb #ideaBar{bottom:72px}
+#tbList{display:flex;gap:4px;flex:1;min-width:0;overflow-x:auto;scrollbar-width:none} #tbList::-webkit-scrollbar{display:none}
+.tbi{position:relative;display:flex;align-items:center;gap:7px;height:34px;max-width:190px;min-width:44px;padding:0 26px 0 8px;flex:none;cursor:pointer;
+  background:rgba(var(--rgb),.06);border:1px solid transparent;color:var(--text);font-size:12.5px;text-align:left}
+.tbi:hover,.tbi:focus-visible{border-color:var(--line);background:rgba(var(--rgb),.14);outline:none} .tbi.fg{border-bottom:2px solid var(--accent)}
+.tbi img,.tbi .ph{width:20px;height:20px;flex:none;object-fit:contain} .tbi .ph{display:grid;place-items:center;font:600 11px var(--mono);color:var(--accent)}
+.tbi span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap} .tbi .n{font:10px var(--mono);color:var(--accent);margin-left:-3px}
+.tbi .x{position:absolute;right:3px;top:50%;transform:translateY(-50%);width:20px;height:20px;border:0;background:none;color:var(--dim);cursor:pointer;opacity:0;font-size:12px}
+.tbi:hover .x,.tbi .x:focus-visible{opacity:1} .tbi .x:hover{color:var(--warn)}
+#tbMenu{position:fixed;z-index:30;display:none;min-width:240px;max-width:380px;background:rgba(2,8,14,.97);border:1px solid var(--line);padding:4px}
+#tbMenu.on{display:block} #tbMenu .tbi{max-width:none;width:100%}
+#taskbar .tbx{flex:none;width:26px;height:34px;border:0;background:none;color:var(--dim);cursor:pointer} #taskbar .tbx:hover{color:var(--accent)}
 #levels .hbtn{padding:6px 10px;font-size:10px}
 .hbtn.on,.btn.on{background:rgba(var(--rgb),.34);color:#fff}
 .gtabs{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px}
@@ -321,6 +335,7 @@ body.hasdock #ovAdd{bottom:138px}
 <div id="apps"></div><div id="ideas"></div><div id="ov"></div><div id="mind"></div>
 <nav id="crumbs" aria-label="Var du är i mindmappen"></nav>
 <form id="ideaBar"><input class="in" id="ideaIn" placeholder="Ny idé eller anteckning i den här globen…" aria-label="Ny idé"><button class="btn">Lägg till</button><button type="button" class="btn on" id="bClaude" title="Få hjälp av Claude med den här grenen">✦ Claude</button></form>
+<nav id="taskbar" aria-label="Öppna program"><div id="tbList"></div><button class="tbx" id="tbHide" title="Dölj aktivitetsfältet (visas igen under Inställningar)" aria-label="Dölj aktivitetsfältet">✕</button></nav><div id="tbMenu" role="menu"></div>
 <div id="levels" role="group" aria-label="Zoomnivå"><button class="hbtn" data-z="0.3">Översikt</button><button class="hbtn" data-z="1">Glob</button><button class="hbtn" data-z="2.6">Inuti</button></div>
 <div class="corner tl"></div><div class="corner tr"></div><div class="corner bl"></div><div class="corner br"></div>
 
@@ -372,7 +387,7 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
    ===================================================================== */
 const KEY = 'jarvis-desktop-v1';
 // Den här versionen av appen. Höj den vid varje ny version; android/build.ps1 skriver den till version.json och APK:n.
-const APP_VERSION = '1.5.0';
+const APP_VERSION = '1.6.0';
 const UPDATE_URL = 'https://vbridgemountain.github.io/victor/desktop/';
 // Finns bara när sidan körs inne i Android-launchern: brygga till telefonens appar (se android/MainActivity.java)
 // Microsoft-inloggningen (widgeten Microsoft 365 admin) öppnas i ett eget fönster och kommer tillbaka hit med ett svar i adressen.
@@ -1363,7 +1378,7 @@ const TYPES = {
         out.className = ''; out.textContent = '';
         out.append(el('div', { class: 'muted mono', style: 'font-size:10px;letter-spacing:.16em;margin-bottom:5px', text: list.length + ' ÖPPNA FÖNSTER · TRYCK FÖR ATT VISA' }),
           el('div', { style: 'max-height:260px;overflow:auto' }, list.map(p => el('div', { class: 'row', role: 'button', tabIndex: 0, title: p.title + ' (' + p.name + ')',
-            style: 'align-items:center;gap:8px;padding:4px 2px;cursor:pointer', onclick: () => helper('/api/focus', { pid: p.pid }).catch(e => toast('PROGRAM', e.message)) },
+            style: 'align-items:center;gap:8px;padding:4px 2px;cursor:pointer', onclick: () => showWin(p) },
             el('img', { src: hIcon(p.icon), alt: '', style: 'width:20px;height:20px;flex:none',
               onerror: e => { const i = e.target; if (i._r) i.style.visibility = 'hidden'; else { i._r = 1; setTimeout(() => { i.src = hIcon(p.icon) + '&r=1'; }, 7000); } } }),   // ikonen kan vara på väg: ett nytt försök
             el('span', { class: 'grow', style: 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap', text: p.title }),
@@ -1631,7 +1646,7 @@ function openHelperSetup(then) {
     step('3', 'Öppna ', el('a', { class: 'lnk', href: HELPER, target: '_blank', rel: 'noopener', text: '127.0.0.1:8770' }), ' på datorn, kopiera kopplingskoden och klistra in den här.'),
     el('form', { class: 'row', style: 'margin-top:12px', onsubmit: async e => { e.preventDefault(); state.helper = { token: t.value.trim() }; save();
         msg.textContent = 'Ansluter…';
-        if (await helperConnect()) { buildScene(); refresh('running'); toast('DATORBRYGGA', 'Ansluten.'); if (then) then(); else closeModal(); }
+        if (await helperConnect()) { buildScene(); refresh('running'); loadTaskbar(); toast('DATORBRYGGA', 'Ansluten.'); if (then) then(); else closeModal(); }
         else msg.textContent = 'Ingen kontakt. Kontrollera att bryggan är igång på den här datorn och att koden stämmer.'; } },
       t, el('button', { class: 'btn', text: 'Anslut' })), msg,
     el('p', { class: 'muted', text: 'Bryggan svarar bara den här datorn, och bara ' + brand() + ' med rätt kod. Den kan starta program från Start-menyn och lyfta fram fönster, inget annat.' })));
@@ -1692,9 +1707,9 @@ function openApps(gi) {
         el('button', { class: 'btn' + (g.color ? '' : ' on'), text: 'Följ tema', onclick: () => setCol('') }))));
     wrap.append(el('span', { class: 'flabel', text: 'Appar i globen' }));
     if (NATIVE) wrap.append(el('div', { class: 'row', style: 'margin-bottom:12px;flex-wrap:wrap' }, el('button', { class: 'btn on', text: '+ Lägg till appar från telefonen', onclick: () => openPicker(gi) }),
-      el('button', { class: 'btn on', text: 'Importera länkar från .json', onclick: () => openImport(gi) })));
+      el('button', { class: 'btn on', text: 'Importera länkar eller bokmärken', onclick: () => openImport(gi) })));
     else wrap.append(el('div', { class: 'row', style: 'margin-bottom:12px;flex-wrap:wrap' }, el('button', { class: 'btn on', text: '+ Lägg till program från datorn', onclick: () => openProgPicker(gi) }),
-        el('button', { class: 'btn on', text: 'Importera länkar från .json', onclick: () => openImport(gi) })),
+        el('button', { class: 'btn on', text: 'Importera länkar eller bokmärken', onclick: () => openImport(gi) })),
       el('p', { class: 'muted', style: 'margin-top:0', text:
       'Webbadresser öppnas i ny flik. Installerade program startas med sitt protokoll, t.ex. spotify:  vscode:  ms-settings:  calculator:  steam://  discord://' }));
     if (g.apps.length > 1) wrap.append(el('p', { class: 'muted', style: 'margin:0 0 8px', text: 'Dra i ⠿ för att ändra ordning, eller släpp på en glob ovanför för att flytta appen dit.' }));
@@ -1802,9 +1817,21 @@ function pickIcon(a, done) {
     el('form', { class: 'row', onsubmit: e => { e.preventDefault(); set(own.value.trim(), own.value.trim() ? '' : 'letter'); } }, own, el('button', { class: 'btn', text: 'Använd' })),
     el('div', { class: 'row', style: 'margin-top:12px' }, el('button', { class: 'btn', text: 'Tillbaka', onclick: done }))));
 }
+// Exporterade bokmärken (.html från Chrome, Edge, Firefox, Safari): varje mapp blir en grupp, länkarna hamnar i närmaste mapp
+function htmlLinks(text) {
+  const doc = new DOMParser().parseFromString(text, 'text/html'), groups = new Map();
+  for (const a of doc.querySelectorAll('a[href]')) {
+    const url = a.getAttribute('href'); if (!/^(https?:|[a-z][a-z0-9+.-]*:\/\/)/i.test(url)) continue;   // hoppar över javascript:, place: m.m.
+    let folder = '', dl = a.closest('dl');
+    if (dl) { let h = dl.previousElementSibling; while (h && h.tagName !== 'H3' && h.tagName !== 'H1') h = h.previousElementSibling; if (h) folder = h.textContent.trim(); }
+    if (!groups.has(folder)) groups.set(folder, []);
+    groups.get(folder).push({ name: a.textContent.trim(), url });
+  }
+  return { globes: [...groups].map(([name, apps]) => ({ name, apps })) };
+}
 function openImport(gi) {
   const g0 = state.globes[gi], wrap = el('div'), info = el('div', { style: 'margin:10px 0' });
-  const paste = el('textarea', { class: 'in', rows: 4, placeholder: 'eller klistra in innehållet i filen här…', 'aria-label': 'JSON', style: 'font:12px var(--mono);width:100%',
+  const paste = el('textarea', { class: 'in', rows: 4, placeholder: 'eller klistra in innehållet i filen här…', 'aria-label': 'Filens innehåll', style: 'font:12px var(--mono);width:100%',
     oninput: () => read(paste.value) });
   let groups = [];
   const example = JSON.stringify({ globes: [{ name: 'Jobb', color: '#3d8bff', apps: [{ name: 'Kalender', url: 'https://outlook.office.com/calendar' }, { name: 'GitHub', url: 'https://github.com', icon: '🐙' }] },
@@ -1812,7 +1839,9 @@ function openImport(gi) {
   function read(text) {
     groups = []; info.textContent = '';
     if (!text.trim()) return;
-    let data; try { data = JSON.parse(text); } catch { info.append(el('div', { class: 'muted', text: 'Det här är inte giltig JSON.' })); return; }
+    let data;
+    if (/^\s*</.test(text)) data = htmlLinks(text);   // bokmärkesfil i HTML
+    else try { data = JSON.parse(text); } catch { info.append(el('div', { class: 'muted', text: 'Filen är varken giltig JSON eller en bokmärkesfil (.html).' })); return; }
     groups = parseLinks(data);
     if (!groups.length) { info.append(el('div', { class: 'muted', text: 'Hittade inga webbadresser i filen.' })); return; }
     const named = groups.filter(x => x.name).length, total = groups.reduce((t, x) => t + x.apps.length, 0);
@@ -1839,8 +1868,9 @@ function openImport(gi) {
   }
   wrap.append(
     el('p', { style: 'margin-top:0', text: 'Lägg in många webbadresser på en gång. Varje adress blir en app med webbplatsens egen ikon.' }),
-    NATIVE ? null : el('label', { class: 'btn on', style: 'cursor:pointer;display:inline-block;margin-bottom:8px' }, 'Välj .json-fil',
-      el('input', { type: 'file', accept: 'application/json,.json', style: 'display:none', onchange: async e => { const f = e.target.files[0]; if (f) { paste.value = ''; read(await f.text()); } } })),
+    el('p', { class: 'muted', style: 'margin-top:0', text: 'Bokmärkesfältet från webbläsaren: Chrome och Edge → Bokmärken → Hantera bokmärken → ⋮ → Exportera bokmärken. Firefox → Bokmärken → Hantera bokmärken → Importera och säkerhetskopiera → Exportera bokmärken till HTML. Välj sedan filen här. Mapparna blir glober.' }),
+    NATIVE ? null : el('label', { class: 'btn on', style: 'cursor:pointer;display:inline-block;margin-bottom:8px' }, 'Välj fil (.json eller bokmärken .html)',
+      el('input', { type: 'file', accept: 'application/json,.json,text/html,.html,.htm', style: 'display:none', onchange: async e => { const f = e.target.files[0]; if (f) { paste.value = ''; read(await f.text()); } } })),
     paste, info,
     el('details', { style: 'margin-top:10px' }, el('summary', { class: 'muted', style: 'cursor:pointer', text: 'Hur filen ska se ut' }),
       el('p', { class: 'muted', text: 'En lista med adresser, en lista med {"name", "url", "icon"}, grupper som {"Jobb": [...]}, eller som exemplet nedan. Chromes bokmärkesfil fungerar också: mapparna blir glober. "icon" är valfri: en emoji eller adressen till en bild.' }),
@@ -1849,7 +1879,7 @@ function openImport(gi) {
         const a = el('a', { href: URL.createObjectURL(new Blob([example], { type: 'application/json' })), download: 'appar-exempel.json' });
         a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000); } })),
     el('div', { class: 'row', style: 'margin-top:12px' }, el('button', { class: 'btn', text: 'Tillbaka', onclick: () => openApps(gi) })));
-  openModal('Importera länkar till ' + g0.name, wrap);
+  openModal('Importera länkar och bokmärken till ' + g0.name, wrap);
 }
 $('#bDrawer').onclick = () => document.body.classList.toggle('wopen');
 
@@ -1947,7 +1977,7 @@ $('#bSettings').onclick = () => {
     el('div', { class: 'field' }, el('span', { class: 'flabel', text: 'Glober och appar' }),
       el('div', { class: 'row', style: 'flex-wrap:wrap' },
         el('button', { class: 'btn', text: 'Öppna Glober', onclick: () => openApps() }),
-        el('button', { class: 'btn', text: 'Importera länkar från .json', onclick: () => openImport(state.active) })),
+        el('button', { class: 'btn', text: 'Importera länkar eller bokmärken', onclick: () => openImport(state.active) })),
       el('label', { class: 'row', style: 'cursor:pointer;margin-top:9px;align-items:center' },
         el('input', { type: 'checkbox', class: 'chk', checked: state.siteIcons !== false, onchange: e => { state.siteIcons = e.target.checked; save(); buildScene(); } }),
         'Hämta webbplatsernas egna ikoner (av: första bokstaven visas)')),
@@ -1962,7 +1992,10 @@ $('#bSettings').onclick = () => {
       'Rotera globen automatiskt')),
     NATIVE ? null : el('div', { class: 'field' }, el('span', { class: 'flabel', text: 'Datorbrygga' }),
       el('div', { class: 'row', style: 'align-items:center' }, el('button', { class: 'btn', text: hTok() ? 'Ändra koppling' : 'Koppla datorns program', onclick: () => openHelperSetup() }),
-        el('span', { class: 'muted', text: helperOk ? 'Ansluten' : hTok() ? 'Ingen kontakt just nu' : 'Inte kopplad' }))),
+        el('span', { class: 'muted', text: helperOk ? 'Ansluten' : hTok() ? 'Ingen kontakt just nu' : 'Inte kopplad' })),
+      el('label', { class: 'row', style: 'cursor:pointer;margin-top:9px;align-items:center' },
+        el('input', { type: 'checkbox', class: 'chk', checked: state.taskbar !== false, onchange: e => { state.taskbar = e.target.checked; save(); tbSig = ''; loadTaskbar(); } }),
+        'Visa aktivitetsfältet med öppna program längst ner (kräver datorbryggan)')),
     NATIVE ? el('div', { class: 'field' }, el('span', { class: 'flabel', text: 'Startskärm' }),
       el('button', { class: 'btn', text: 'Välj ' + brand() + ' som startskärm', onclick: () => NATIVE.homeSettings() }))
     : el('div', { class: 'field' }, el('span', { class: 'flabel', text: 'Flytta till en annan enhet' }),
@@ -1984,6 +2017,48 @@ $('#bSettings').onclick = () => {
       el('button', { class: 'btn danger', text: 'Nollställ allt', onclick: () => {
         if (confirm('Ta bort alla appar, widgets, påminnelser och inställningar och börja om?')) { clearTimeout(saveT); localStorage.removeItem(KEY); location.reload(); } } }))));
 };
+/* ---------- Aktivitetsfält: datorns öppna program, som i Windows ---------- */
+// Visar alla öppna fönster via datorbryggan. Klick visar fönstret (flera fönster av samma program: välj i en lista), ✕ stänger det.
+// Det går att dölja helt; det visas bara på datorn och bara när bryggan är kopplad.
+const tbEl = $('#taskbar'), tbList = $('#tbList'), tbMenu = $('#tbMenu');
+let tbWins = [], tbSig = '', tbBusy = false;
+const tbOn = () => !NATIVE && state.taskbar !== false && !!hTok();
+function tbItem(w, label, count, onclick) {
+  const icon = el('img', { src: hIcon(w.icon), alt: '', draggable: false, onerror: e => e.target.replaceWith(el('span', { class: 'ph', text: (w.name || '?')[0].toUpperCase() })) });
+  return el('button', { class: 'tbi' + (w.fg ? ' fg' : ''), title: w.title + (count > 1 ? '' : ' — ' + w.name), onclick, oncontextmenu: e => { e.preventDefault(); closeWin(w); } },
+    icon, el('span', { text: label }), count > 1 ? el('span', { class: 'n', text: count }) : null,
+    el('button', { class: 'x', text: '✕', title: count > 1 ? 'Stäng alla ' + count + ' fönster' : 'Stäng ' + w.title, 'aria-label': 'Stäng',
+      onclick: e => { e.stopPropagation(); if (count > 1) { if (confirm(`Stänga alla ${count} fönster i ${w.name}?`)) tbWins.filter(x => x.name === w.name).forEach(closeWin); } else closeWin(w); } }));
+}
+async function showWin(w) { tbMenu.classList.remove('on'); try { await helper('/api/focus', { pid: w.pid, hwnd: w.hwnd }); } catch (e) { toast('PROGRAM', e.message); } setTimeout(loadTaskbar, 600); }
+async function closeWin(w) { try { await helper('/api/close', { pid: w.pid, hwnd: w.hwnd }); } catch (e) { toast('PROGRAM', e.message); } setTimeout(loadTaskbar, 900); setTimeout(loadTaskbar, 2500); }
+function drawTaskbar() {
+  const groups = new Map(); for (const w of tbWins) { if (!groups.has(w.name)) groups.set(w.name, []); groups.get(w.name).push(w); }
+  tbList.textContent = '';
+  if (!tbWins.length) tbList.append(el('span', { class: 'muted', style: 'padding:0 8px;font-size:12px', text: 'Inga öppna program' }));
+  for (const [, list] of groups) {
+    const w = list[0], many = list.length > 1;
+    tbList.append(tbItem(Object.assign({}, w, { fg: list.some(x => x.fg) }), many ? w.name : w.title, list.length, e => {
+      if (!many) return showWin(w);
+      tbMenu.textContent = ''; list.forEach(x => tbMenu.append(tbItem(x, x.title, 1, () => showWin(x))));
+      const r = e.currentTarget.getBoundingClientRect(); tbMenu.classList.add('on');
+      tbMenu.style.left = Math.min(r.left, innerWidth - tbMenu.offsetWidth - 8) + 'px'; tbMenu.style.top = (r.top - tbMenu.offsetHeight - 6) + 'px';
+    }));
+  }
+}
+async function loadTaskbar() {
+  const on = tbOn(); document.body.classList.toggle('tb', on);
+  if (!on || tbBusy || document.hidden) return;
+  tbBusy = true;
+  try { const list = (await helper('/api/windows')).windows; helperOk = true;
+    const sig = JSON.stringify(list.map(w => [w.pid, w.hwnd, w.title, w.fg])); if (sig !== tbSig) { tbSig = sig; tbWins = list; drawTaskbar(); } }
+  catch { if (tbSig !== 'off') { tbSig = 'off'; tbWins = []; tbList.textContent = ''; tbList.append(el('span', { class: 'muted', style: 'padding:0 8px;font-size:12px', text: 'Datorbryggan svarar inte. Starta den på datorn.' })); } }
+  finally { tbBusy = false; }
+}
+$('#tbHide').onclick = () => { state.taskbar = false; save(); loadTaskbar(); toast('AKTIVITETSFÄLT', 'Dolt. Visa det igen under Inställningar.'); };
+addEventListener('pointerdown', e => { if (!e.target.closest('#tbMenu,.tbi')) tbMenu.classList.remove('on'); });
+setInterval(loadTaskbar, 2500); document.addEventListener('visibilitychange', loadTaskbar);
+
 /* ---------- Version och uppdateringar ---------- */
 // Jämför den här versionen med version.json på webben. Webbappen uppdateras genom att laddas om,
 // Android-appen genom att den nya APK:n laddas ner och installeras över den gamla.
@@ -2035,7 +2110,7 @@ requestAnimationFrame(frame);
 
 // installerbar app: fungerar bara när sidan ligger på en webbadress (https), inte som lokal fil
 if (!NATIVE && 'serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js').catch(() => {});
-if (!NATIVE) helperConnect().then(ok => { if (ok) refresh('running'); });   // datorbryggan, om den är kopplad
+if (!NATIVE) helperConnect().then(ok => { if (ok) refresh('running'); loadTaskbar(); });   // datorbryggan, om den är kopplad
 
 applyBrand();
 if (Date.now() - (state.updChecked || 0) > 20 * 3600e3) setTimeout(() => checkUpdate().then(n => {

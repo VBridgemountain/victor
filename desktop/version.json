@@ -1,13 +1,11 @@
 {
-    "version":  "1.5.0",
-    "date":  "2026-11-18",
+    "version":  "1.6.0",
+    "date":  "2026-11-21",
     "notes":  [
-                  "Se vilken version du har och uppdatera under Inställningar → Version",
-                  "Importera länkar från .json, i Glober och Inställningar",
-                  "Dra appar för att sortera dem eller flytta dem mellan glober",
-                  "Välj ikon per app, eller stäng av webbplatsernas ikoner",
-                  "Byt systemets namn under Inställningar",
-                  "Långa appnamn bryts på två rader i stället för att gå in i varandra"
+                  "Importera bokmärken från webbläsaren (.html), mapparna blir glober",
+                  "Aktivitetsfält längst ner med datorns öppna program: klicka för att visa, ✕ för att stänga, dölj det helt om du vill",
+                  "Flera fönster från samma program samlas och kan väljas i en lista",
+                  "Datorbryggan läser fönster mycket snabbare och kan stänga dem"
               ],
     "apk":  "https://vbridgemountain.github.io/victor/desktop/victor.apk"
 }
