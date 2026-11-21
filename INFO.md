@@ -56,6 +56,8 @@ De delar utseende men inte kod, och ingen av dem kräver den andra.
 
 **Appar i globerna** kan vara webbadresser, protokoll (t.ex. `spotify:`, `vscode:`, `ms-settings:`) eller datorns installerade program via datorbryggan (avsnitt 4).
 
+**Spel från archive.org:** Glober → **+ Spel från archive.org**. Välj samling (MS-DOS, Windows 3.x, arkad, konsoler, Commodore 64, Apple II), sök eller klistra in en länk från archive.org, och tryck **Spela** eller **Lägg till**. Spelet öppnas i ett eget fönster inne i appen: dra i titelraden för att flytta, i nedre högra hörnet för att ändra storlek, ⛶ för helskärm, — för att minimera. Klicka i spelet innan du spelar, så att tangentbordet styr det. Spelen körs hos Internet Archive och laddas inte ner till datorn eller servern.
+
 **Sortera och flytta appar:** i Glober, dra i ⠿ framför en app för att ändra ordning, eller släpp den på en glob i flikraden för att flytta den dit. Menyn "Flytta till…" på varje rad gör samma sak.
 
 **Ikoner för webbadresser:** som standard hämtas webbplatsens egen ikon direkt från sajten. Tryck på ikonen i Glober för att välja webbplatsens ikon, första bokstaven, en emoji eller en bildadress. Vill du inte ha webbplatsernas ikoner alls: Inställningar → stäng av "Hämta webbplatsernas egna ikoner".

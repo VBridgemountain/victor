@@ -1,12 +1,10 @@
 {
-    "version":  "1.7.0",
+    "version":  "1.8.0",
     "date":  "2026-11-21",
     "notes":  [
-                  "Förhandsbilder av öppna fönster som rutor du kan flytta fritt över skärmarna (Inställningar → Fönster)",
-                  "Klicka på en ruta för att visa fönstret, ✕ för att stänga det",
-                  "Ordna fönster: välj skärm och plats per program, med knappen ▦ i aktivitetsfältet",
-                  "Kan ordna nya fönster automatiskt när de öppnas",
-                  "Kräver den nya datorbryggan"
+                  "Spela gamla spel från archive.org i ett eget fönster inne i appen: MS-DOS, Windows 3.x, arkad, konsoler, Commodore 64 och Apple II",
+                  "Glober → + Spel från archive.org: sök, spela direkt eller lägg spelet som app i en glob",
+                  "Spelfönstret går att flytta, ändra storlek på, minimera och köra i helskärm"
               ],
     "apk":  "https://vbridgemountain.github.io/victor/desktop/victor.apk"
 }
