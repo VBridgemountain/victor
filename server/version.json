@@ -1,0 +1,9 @@
+{
+    "version":  "1.1.0",
+    "notes":  "Nedladdningsbart program med genväg, uppdateringsknapp i panelen, QR-kod för tvåstegsinloggning och panelen kan installeras som app.",
+    "date":  "2026-11-21",
+    "zip":  "download/victor-server.zip",
+    "zipSha256":  "ed01345ab44b596ae0e5adc4590418ef9e856d2a3be65889ca75fc303bb7c37d",
+    "tgz":  "download/victor-server.tar.gz",
+    "tgzSha256":  "9321af774d19df982173d106b4a2a05541c26529e8334cce6efe03e2c22d64fc"
+}

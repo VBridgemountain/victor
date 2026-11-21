@@ -165,10 +165,27 @@ Ta bort autostarten med `node helper.js --no-autostart`.
 
 ## 6. V.I.C.T.O.R. Server: installation
 
-På serverdatorn (Windows eller Linux):
+### Enklast: ladda ner programmet (Windows)
+
+1. Ladda ner **https://vbridgemountain.github.io/victor/server/download/victor-server.zip** och packa upp den där programmet ska ligga, t.ex. `C:\V.I.C.T.O.R. Server`.
+2. Dubbelklicka på **Starta V.I.C.T.O.R. Server.cmd**. Första gången:
+   - hämtas Node.js automatiskt från nodejs.org om det inte redan finns (bara `node.exe`, till mappen `runtime`, kontrollerad mot sin kontrollsumma),
+   - läggs genvägen **V.I.C.T.O.R. Server** på skrivbordet och i Start-menyn,
+   - öppnas panelen i webbläsaren.
+3. Vill du att den startar med datorn utan inloggning: högerklicka på `installera-autostart.cmd` → Kör som administratör.
+
+**Linux:** ladda ner `victor-server.tar.gz` från samma adress, packa upp (`tar -xzf victor-server.tar.gz`), installera Node.js 18+ och kör `sh victor-server/starta.sh`.
+
+### Panelen som egen app
+
+Öppna panelen i Chrome eller Edge (på servern eller var du vill, t.ex. `https://server.shadowframe.studio`) och tryck på **Installera app** uppe till höger,
+eller i webbläsarens meny: *Installera V.I.C.T.O.R. Server*. Den öppnas då i ett eget fönster med egen ikon, som ett vanligt program.
+På telefonen: webbläsarens meny → *Lägg till på startskärmen*.
+
+### Med git (för den som utvecklar)
 
 1. Installera [Node.js](https://nodejs.org) 18.15 eller nyare.
-2. Hämta repot (Code → Download ZIP på GitHub, eller `git clone`) och gå till mappen `server`.
+2. `git clone` repot och gå till mappen `server`.
 3. Starta:
 
 ```bash
@@ -416,7 +433,10 @@ Genvägarna i widgeten fungerar direkt. Live-data kräver en appregistrering i d
 
 - **Webbappen** uppdateras av sig själv när det finns nät.
 - **Android:** ladda ner APK:n igen och installera över.
-- **Servern:** hämta repot på nytt och ersätt mappen `server`, men behåll `server/data`. Starta om programmet.
+- **Servern:** Drift → **Sök efter uppdatering …** i panelen. Finns en ny version visas vad som är nytt; bekräfta med lösenordet.
+  Servern laddar ner paketet, kontrollerar kontrollsumman, byter ut filerna (mappen `data` rörs aldrig) och startar om sig själv.
+  Spelservrarna fortsätter gå och du är kvar inloggad. Ligger programmet i en git-klon hämtas det senaste med `git pull` i stället.
+  Servern kollar själv var sjätte timme och lägger en händelse (och notis, om "Info" är påslaget) när en ny version finns.
 - **Datorbryggan:** ersätt `helper.js` och starta om.
 
 **Utveckling**
@@ -430,6 +450,9 @@ Genvägarna i widgeten fungerar direkt. Live-data kräver en appregistrering i d
 powershell -ExecutionPolicy Bypass -File desktop\android\build.ps1
 ```
 
+- **Ny serverversion:** höj `VERSION` i `server/server.js`, skriv vad som är nytt i `server/nytt.txt` och kör
+  `powershell -ExecutionPolicy Bypass -File server\pack.ps1`. Det bygger `server/download/victor-server.zip` och `.tar.gz` och skriver
+  `server/version.json`. Pusha: servrarna erbjuds uppdateringen.
 - Servern: `server/server.js` (agenten), `server/public/` (panel, labb, spelhall), `server/arcade/player.html` (spelaren).
 - Kontrollera syntaxen före push: `node --check server/server.js`.
 

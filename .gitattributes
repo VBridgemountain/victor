@@ -1,2 +1,4 @@
 # skalskript måste ha Unix-radslut för att fungera på Linux
 *.sh text eol=lf
+*.cmd eol=crlf
+*.ps1 eol=crlf

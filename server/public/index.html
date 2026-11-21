@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#02060b">
 <title>V.I.C.T.O.R. Server — NoirLab</title>
+<link rel="manifest" href="/manifest.webmanifest" crossorigin="use-credentials">
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
 <style>
 :root{
   --rgb:0,216,255; --accent:rgb(var(--rgb)); --bg:#02060b;
@@ -113,6 +115,7 @@ label{display:block;font:10px var(--mono);letter-spacing:.16em;text-transform:up
   <a class="btn" href="/arcade.html" style="text-decoration:none">Spelhall</a>
   <a class="btn" href="/lab.html" style="text-decoration:none">Labb</a>
   <button class="btn pri" id="bAdd">+ Spelserver</button>
+  <button class="btn" id="bInst" hidden title="Installera panelen som ett eget program på den här datorn eller telefonen">Installera app</button>
   <button class="btn" id="bSet">Inställningar</button>
   <button class="btn" id="bOut">Logga ut</button>
 </header>
@@ -191,6 +194,11 @@ async function showLogin() {
     s.setup && !s.local && h('p', { class: 'note' }, 'Det första lösenordet måste väljas på servern själv, via http://localhost:8787, eller med kommandot node server.js --set-password.'),
     h('label', null, 'Lösenord'), pw, !s.setup && s.totp && [h('label', null, 'Kod från autentiseringsappen'), code], err, h('div', { class: 'row' }, h('button', { class: 'btn pri' }, s.setup ? 'Spara' : 'Logga in'))), false);
 }
+// Panelen kan installeras som ett eget program (fönster utan webbläsarlist) i Chrome, Edge och på telefonen
+let instEvt = null;
+addEventListener('beforeinstallprompt', e => { e.preventDefault(); instEvt = e; $('bInst').hidden = false; });
+addEventListener('appinstalled', () => { $('bInst').hidden = true; toast('Panelen är installerad som program.'); });
+$('bInst').onclick = async () => { if (!instEvt) return; instEvt.prompt(); await instEvt.userChoice.catch(() => {}); instEvt = null; $('bInst').hidden = true; };
 $('bOut').onclick = () => call('POST', '/api/logout').catch(() => {}).then(showLogin);
 
 // ------------------------------------------------------------------ data
@@ -240,6 +248,9 @@ function render() {
     !pw.autostart && h('p', { class: 'note', style: 'margin:2px 0 6px' }, s.platform === 'win' ? 'Kör installera-autostart.cmd i mappen server på serverdatorn, så startar allt av sig självt efter strömavbrott och omstarter.' : 'Kör sudo sh autostart-linux.sh i mappen server på serverdatorn.'),
     h('div', { class: 'kv' }, h('span', null, 'Notiser till telefonen'), h('span', { style: (s.notify.ntfy && s.notify.ntfyOn) || (s.notify.discord && s.notify.discordOn) ? 'color:var(--ok)' : '' },
       s.notify.error ? 'fel' : [s.notify.ntfy && s.notify.ntfyOn && 'ntfy', s.notify.discord && s.notify.discordOn && 'Discord'].filter(Boolean).join(' + ') || 'av')),
+    h('div', { class: 'kv' }, h('span', null, 'V.I.C.T.O.R. Server'), h('span', { style: s.update.available ? 'color:var(--wait)' : '' },
+      'version ' + s.version + (s.update.busy ? ' · uppdaterar …' : s.update.available ? ' · ' + s.update.latest + ' finns' : ''))),
+    h('div', { class: 'row' }, h('button', { class: 'btn' + (s.update.available ? ' pri' : ''), onclick: openUpdate }, s.update.available ? 'Uppdatera till ' + s.update.latest + ' …' : 'Sök efter uppdatering …')),
     h('div', { class: 'row' }, h('button', { class: 'btn', onclick: () => openPower('restart') }, 'Starta om datorn'), h('button', { class: 'btn red', onclick: () => openPower('shutdown') }, 'Stäng av')),
     S.maintenance && h('p', { class: 'err', style: 'margin:4px 0' }, 'Underhållsläge: ingen automatik och inga notiser.'),
     h('div', { class: 'row', style: 'margin-top:8px' }, h('button', { class: 'btn', onclick: openNotify }, 'Drift och notiser …'), h('button', { class: 'btn', onclick: openEvents }, 'Händelser …')),
@@ -402,6 +413,32 @@ function openPower(action) {
     !S.power.autostart && h('p', { class: 'err' }, 'Autostart är inte påslagen: efter omstarten måste programmet startas på serverdatorn.'),
     h('label', null, 'Bekräfta med ditt lösenord'), pw, S.totpOn ? [h('label', null, 'Kod från autentiseringsappen'), code] : null, err,
     h('div', { class: 'row' }, h('button', { class: 'btn ' + (rs ? 'pri' : 'red') }, rs ? 'Starta om' : 'Stäng av'), h('button', { class: 'btn', type: 'button', onclick: closeModal }, 'Avbryt'))));
+}
+// Uppdatera V.I.C.T.O.R. Server till senaste versionen: hämtas, kontrolleras och installeras av servern, som sedan startar om sig själv
+async function openUpdate() {
+  editing = true; const err = h('div', { class: 'err' }), box = h('div', null, h('p', { class: 'note' }, 'Kollar senaste versionen …'));
+  const pw = h('input', { class: 'in', type: 'password', autocomplete: 'current-password' });
+  modal('Uppdatera V.I.C.T.O.R. Server', h('div', null, box, err));
+  let j; try { j = await call('GET', '/api/update?check=1'); } catch (v) { err.textContent = v.message; return; }
+  const waitBack = from => { let n = 0; const t = setInterval(async () => {
+    if (++n > 150) { clearInterval(t); put(box, h('p', { class: 'err' }, 'Servern har inte kommit tillbaka efter fem minuter. Kontrollera på serverdatorn.')); return; }
+    try { const u = await call('GET', '/api/update'); if (u.current !== from || (!u.busy && n > 5)) { clearInterval(t); closeModal(); toast(u.current !== from ? 'Uppdaterad till version ' + u.current + '.' : 'Servern startade om men har kvar version ' + u.current + (u.error ? ': ' + u.error : '.')); setTimeout(() => location.reload(), 1200); }
+      else if (u.error) { clearInterval(t); put(box, h('p', { class: 'err' }, u.error)); }
+      else put(box, h('p', null, u.step || 'Uppdaterar …')); } catch { put(box, h('p', null, 'Startar om … panelen kommer tillbaka av sig själv.')); } }, 2000); };
+  put(box,
+    h('div', { class: 'kv' }, h('span', null, 'Du har'), h('span', null, 'version ' + j.current)),
+    h('div', { class: 'kv' }, h('span', null, 'Senaste'), h('span', { style: !j.latest ? '' : j.available ? 'color:var(--wait)' : 'color:var(--ok)' }, j.latest ? 'version ' + j.latest : 'okänd')),
+    j.error && h('p', { class: 'err' }, j.error),
+    j.notes && h('p', { class: 'note' }, 'Nytt: ' + j.notes),
+    h('p', { class: 'note' }, j.method === 'git' ? 'Programmet ligger i en git-mapp och hämtar det senaste med git pull.'
+      : 'Paketet laddas ner, kontrolleras mot sin kontrollsumma och packas upp över programmet. Mappen data (inställningar, spelservrar, säkerhetskopior) rörs inte.'),
+    h('p', { class: 'note' }, 'Spelservrarna fortsätter gå. Panelen är borta några sekunder medan programmet startar om, och du är kvar inloggad.'),
+    (j.available || j.method === 'git') ? h('form', { onsubmit: async e => { e.preventDefault(); err.textContent = '';
+        try { await call('POST', '/api/update', { password: pw.value }); put(box, h('p', null, 'Uppdaterar …')); waitBack(j.current); } catch (v) { err.textContent = v.message; } } },
+      h('label', null, 'Bekräfta med ditt lösenord'), pw,
+      h('div', { class: 'row' }, h('button', { class: 'btn pri' }, j.available ? 'Uppdatera till ' + j.latest : 'Hämta senaste med git'), h('button', { class: 'btn', type: 'button', onclick: closeModal }, 'Stäng')))
+    : h('div', { class: 'row' }, h('span', { class: 'note' }, 'Du har senaste versionen.'), h('button', { class: 'btn', onclick: closeModal }, 'Stäng')));
+  if (j.busy) waitBack(j.current);
 }
 // Drift och notiser: autostart, underhållsläge, notiskanaler (av/på, byta Discord-kanal) och vilka händelser som skickas
 function openNotify() {

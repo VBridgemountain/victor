@@ -9,6 +9,12 @@ anslutna och serverns utskrift.
 
 ## Kom igång (på serverdatorn)
 
+**Enklast (Windows):** ladda ner [victor-server.zip](https://vbridgemountain.github.io/victor/server/download/victor-server.zip),
+packa upp och dubbelklicka på `Starta V.I.C.T.O.R. Server.cmd`. Node.js hämtas automatiskt om det saknas och en genväg läggs
+på skrivbordet. Uppdatera sedan från panelen: Drift → Sök efter uppdatering. Linux: `victor-server.tar.gz` och `sh starta.sh`.
+
+**För hand:**
+
 1. Installera [Node.js](https://nodejs.org) 18.15 eller nyare.
 2. Kopiera mappen `server` till serverdatorn (utan undermappen `data`, om den finns).
 3. Starta agenten: `node server.js`

@@ -1,0 +1,1 @@
+Nedladdningsbart program med genväg, uppdateringsknapp i panelen, QR-kod för tvåstegsinloggning och panelen kan installeras som app.

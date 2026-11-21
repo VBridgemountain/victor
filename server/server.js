@@ -6,7 +6,10 @@
 const http = require('http'), https = require('https'), fs = require('fs'), path = require('path'), os = require('os'),
       crypto = require('crypto'), dgram = require('dgram'), { spawn, execFile } = require('child_process');
 
+const VERSION = '1.1.0';   // V.I.C.T.O.R. Servers egen version; pack.ps1 skriver den till version.json för uppdateringsknappen
 const WIN = process.platform === 'win32', SERVICE = process.argv.includes('--service');   // --service: startad av autostarten, utan fönster
+// Windows egen tar (klarar zip); Git för Windows tar tolkar C: som en fjärrdator om den råkar ligga först i PATH
+const TAR = WIN ? path.join(process.env.SystemRoot || 'C:\\Windows','System32', 'tar.exe') : 'tar';
 const ROOT = __dirname, PUB = path.join(ROOT, 'public'), DATA = path.join(ROOT, 'data'), LOGS = path.join(DATA, 'logs');
 fs.mkdirSync(LOGS, { recursive: true });
 const CFG_FILE = path.join(DATA, 'config.json');
@@ -287,7 +290,7 @@ async function backupServer(s, why = '') {
   fs.mkdirSync(bkDir(s), { recursive: true });
   const file = path.join(bkDir(s), stamp() + (why ? '-' + why : '') + '.tar.gz');
   r.job = 'backup';
-  try { await runP('tar', ['-czf', file, '-C', path.dirname(src), path.basename(src)]); }
+  try { await runP(TAR, ['-czf', file, '-C', path.dirname(src), path.basename(src)]); }
   catch (e) { fs.rmSync(file, { force: true }); throw new Error('Säkerhetskopian misslyckades: ' + e.message); }
   finally { r.job = null; }
   const keep = Math.max(1, s.backupKeep || 7);
@@ -306,7 +309,7 @@ async function restoreServer(s, name) {
   try {
     fs.rmSync(old, { recursive: true, force: true });
     if (fs.existsSync(src)) fs.renameSync(src, old);
-    try { await runP('tar', ['-xzf', path.join(bkDir(s), b.name), '-C', path.dirname(src)]); }
+    try { await runP(TAR, ['-xzf', path.join(bkDir(s), b.name), '-C', path.dirname(src)]); }
     catch (e) { fs.rmSync(src, { recursive: true, force: true }); if (fs.existsSync(old)) fs.renameSync(old, src); throw new Error('Återställningen misslyckades, inget är ändrat: ' + e.message); }
   } finally { r.job = null; }
   event(`${s.name} återställdes till säkerhetskopian ${b.name}.`, 'info', 'info');
@@ -387,6 +390,8 @@ function startup() {
   let last = 0; try { last = +fs.readFileSync(HEART, 'utf8') || 0; } catch { }
   const planned = cfg.plannedPower && Date.now() - cfg.plannedPower.at < 30 * 60000 ? cfg.plannedPower : null;
   delete cfg.plannedPower;
+  const updated = cfg.updatedFrom && Date.now() - cfg.updatedFrom.at < 30 * 60000 ? cfg.updatedFrom : null; delete cfg.updatedFrom;
+  if (updated) { event(updated.version === VERSION ? `V.I.C.T.O.R. Server startade om, men är kvar på version ${VERSION}.` : `V.I.C.T.O.R. Server är uppdaterad från ${updated.version} till ${VERSION}.`, 'info', 'info'); last = 0; }
   for (const s of cfg.servers) if (s.pid && (s.startedAt || 0) < bootTime) s.pid = 0;   // processnummer från före omstarten gäller inte längre
   save();
   const fmt = t => new Date(t).toLocaleString('sv-SE', { dateStyle: 'short', timeStyle: 'short' });
@@ -436,6 +441,62 @@ function powerAction(action) {
     execFile(cmd, args, { windowsHide: true }, e => { if (e) { delete cfg.plannedPower; save(); event('Datorn kunde inte ' + (action === 'restart' ? 'startas om' : 'stängas av') + ': ' + e.message, 'bad', 'online'); } });
   }, 4000);
 }
+// ------------------------------------------------------------------ uppdatering av V.I.C.T.O.R. Server själv
+// Senaste versionen läses från GitHub Pages (version.json). Är programmet en git-klon hämtas den med git pull, annars laddas paketet ner,
+// kontrolleras mot sin SHA-256 och packas upp över programmet (mappen data rörs aldrig). Därefter startar programmet om sig självt.
+const UPD_BASE = (process.env.VICTOR_UPDATE_URL || 'https://vbridgemountain.github.io/victor/server/').replace(/\/?$/, '/');
+const GIT_DIR = [ROOT, path.dirname(ROOT)].find(d => fs.existsSync(path.join(d, '.git')));
+const upd = { latest: null, notes: '', info: null, at: 0, busy: false, error: '', step: '' };
+const newer = (a, b) => { const x = String(a).split('.').map(Number), y = String(b).split('.').map(Number); for (let i = 0; i < 3; i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0); return false; };
+async function checkUpdate(force) {
+  if (!force && Date.now() - upd.at < 3 * 3600e3 && upd.latest) return upd;
+  const r = await fetch(UPD_BASE + 'version.json?t=' + Date.now(), { signal: AbortSignal.timeout(10000) });
+  if (!r.ok) throw new Error('Kunde inte läsa senaste versionen (' + r.status + ').');
+  const j = await r.json(); Object.assign(upd, { latest: String(j.version || ''), notes: String(j.notes || ''), info: j, at: Date.now() });
+  if (newer(upd.latest, VERSION) && cfg.updNotified !== upd.latest) { cfg.updNotified = upd.latest; save(); event(`Ny version av V.I.C.T.O.R. Server finns: ${upd.latest} (du har ${VERSION}).`, 'info', 'info'); }
+  return upd;
+}
+function restartSelf() {
+  const q = a => '"' + String(a).replace(/"/g, '') + '"', args = process.argv.slice(1);
+  if (SERVICE && !WIN) return setTimeout(() => process.exit(0), 800);   // systemd startar om tjänsten
+  if (WIN) {
+    const cmd = SERVICE ? 'timeout /t 3 /nobreak >nul & schtasks /Run /TN "VICTOR Server"'   // den schemalagda uppgiften startas igen
+                        : `timeout /t 2 /nobreak >nul & start "V.I.C.T.O.R. Server" /d ${q(ROOT)} ${q(process.execPath)} ${args.map(q).join(' ')}`;
+    spawn('cmd.exe', ['/d /s /c "' + cmd + '"'], { detached: true, stdio: 'ignore', windowsHide: true, windowsVerbatimArguments: true }).unref();
+  } else spawn('sh', ['-c', `sleep 2; cd ${q(ROOT)} && exec ${q(process.execPath)} ${args.map(q).join(' ')} >> ${q(path.join(LOGS, 'server.log'))} 2>&1`], { detached: true, stdio: 'ignore' }).unref();
+  setTimeout(() => process.exit(0), 800);
+}
+async function applyUpdate() {
+  if (upd.busy) throw new Error('Uppdateringen pågår redan.');
+  upd.busy = true; upd.error = '';
+  try {
+    if (GIT_DIR) {
+      upd.step = 'Hämtar med git …';
+      await runP('git', ['-c', 'safe.directory=*', '-C', GIT_DIR, 'pull', '--ff-only'], 180000);
+    } else {
+      const info = (await checkUpdate(true)).info || {}, file = WIN ? info.zip : info.tgz, want = String((WIN ? info.zipSha256 : info.tgzSha256) || '').toLowerCase();
+      if (!file || !want) throw new Error('Paketet saknas i version.json.');
+      upd.step = 'Laddar ner ' + file + ' …';
+      const r = await fetch(UPD_BASE + file + '?v=' + encodeURIComponent(upd.latest), { signal: AbortSignal.timeout(300000) });
+      if (!r.ok) throw new Error('Nedladdningen misslyckades (' + r.status + ').');
+      const buf = Buffer.from(await r.arrayBuffer());
+      if (crypto.createHash('sha256').update(buf).digest('hex') !== want) throw new Error('Paketet stämmer inte med sin kontrollsumma. Inget har ändrats.');
+      upd.step = 'Packar upp …';
+      const dir = path.join(DATA, 'update'), out = path.join(dir, 'ny'), pkg = path.join(dir, path.basename(file));
+      fs.rmSync(dir, { recursive: true, force: true }); fs.mkdirSync(out, { recursive: true }); fs.writeFileSync(pkg, buf);
+      await runP(TAR, [WIN ? '-xf' : '-xzf', pkg, '-C', out], 120000);
+      const src = path.join(out, 'victor-server');
+      if (!fs.existsSync(path.join(src, 'server.js'))) throw new Error('Paketet ser inte ut som V.I.C.T.O.R. Server.');
+      upd.step = 'Byter ut filerna …';
+      fs.cpSync(src, ROOT, { recursive: true, force: true, filter: f => path.relative(src, f).split(path.sep)[0] !== 'data' });
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+    cfg.updatedFrom = { version: VERSION, at: Date.now() }; save();
+    upd.step = 'Startar om …'; event('V.I.C.T.O.R. Server uppdateras och startar om.', 'info', 'info');
+    restartSelf();
+  } catch (e) { upd.busy = false; upd.step = ''; upd.error = e.message; event('Uppdateringen misslyckades: ' + e.message, 'bad', 'info'); throw e; }
+}
+
 const macs = () => Object.entries(os.networkInterfaces()).flatMap(([name, l]) => l.filter(a => !a.internal && a.family === 'IPv4' && a.mac && a.mac !== '00:00:00:00:00:00').map(a => ({ name, ip: a.address, mac: a.mac })));
 
 // SteamCMD hämtas från Valves egen adress när man trycker på knappen i panelen.
@@ -451,7 +512,7 @@ async function installSteamcmd() {
     }).on('error', fail));
     scInstall = 'Packar upp …';
     if (WIN) await run('powershell', ['-NoProfile', '-Command', 'Expand-Archive -LiteralPath $env:VF -DestinationPath $env:VD -Force'], { timeout: 120000, env: { ...process.env, VF: file, VD: dir } });
-    else await run('tar', ['-xzf', file, '-C', dir], { timeout: 120000 });
+    else await run(TAR, ['-xzf', file, '-C', dir], { timeout: 120000 });
     fs.rmSync(file, { force: true });
     if (!steamcmdPath()) throw new Error('SteamCMD gick inte att packa upp.');
   } finally { scInstall = null; }
@@ -552,9 +613,13 @@ async function labApi(req, res, url, m) {
 }
 
 // ------------------------------------------------------------------ inloggning
-const sessions = new Map();   // token → utgångstid
+// Inloggningar sparas (bara ett fingeravtryck av kakan), så att man är kvar inloggad när servern startats om, t.ex. efter en uppdatering
+const SESS_FILE = path.join(DATA, 'sessions.json'), tokHash = t => crypto.createHash('sha256').update(String(t)).digest('hex');
+const sessions = new Map();   // fingeravtryck → utgångstid
+try { for (const [k, e] of Object.entries(JSON.parse(fs.readFileSync(SESS_FILE, 'utf8')))) if (e > Date.now()) sessions.set(k, e); } catch { }
+const saveSessions = () => fs.writeFile(SESS_FILE, JSON.stringify(Object.fromEntries(sessions)), () => {});
 const cookieTok = req => (/(?:^|;\s*)victor=([a-f0-9]{48})/.exec(req.headers.cookie || '') || [])[1];
-const authed = req => { const t = cookieTok(req), e = t && sessions.get(t); if (!e) return false; if (e < Date.now()) { sessions.delete(t); return false; } return true; };
+const authed = req => { const t = cookieTok(req), k = t && tokHash(t), e = k && sessions.get(k); if (!e) return false; if (e < Date.now()) { sessions.delete(k); saveSessions(); return false; } return true; };
 // Bakom en tunnel eller omvänd proxy (Cloudflare Tunnel, Tailscale Funnel, nginx) kommer alla anrop från den egna maskinen.
 // Då står besökarens riktiga adress i ett huvud, och anropet räknas inte som lokalt.
 const loopback = req => ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress);
@@ -563,7 +628,8 @@ const isLocal = req => loopback(req) && !fwd(req);
 const clientIp = req => clean((loopback(req) && fwd(req)) || req.socket.remoteAddress || '?', 60);
 const isHttps = req => !!req.socket.encrypted || (loopback(req) && req.headers['x-forwarded-proto'] === 'https');
 function newSession(req, res) {
-  const t = crypto.randomBytes(24).toString('hex'); sessions.set(t, Date.now() + 30 * 864e5);
+  const t = crypto.randomBytes(24).toString('hex'); sessions.set(tokHash(t), Date.now() + 30 * 864e5);
+  for (const [k, e] of sessions) if (e < Date.now()) sessions.delete(k); saveSessions();
   res.setHeader('Set-Cookie', `victor=${t}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${30 * 86400}${isHttps(req) ? '; Secure' : ''}`);
 }
 // Spärr per besökare: fem fel ger en minuts väntan, och väntan fördubblas för varje ny omgång (högst en timme).
@@ -701,7 +767,7 @@ function arcadeServer(req, res) {   // spelarens egen adress: bara spelarsidan o
 }
 
 // ------------------------------------------------------------------ http
-const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'application/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.png': 'image/png', '.json': 'application/json' };
+const MIME = { '.webmanifest': 'application/manifest+json', '.html': 'text/html; charset=utf-8', '.js': 'application/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.png': 'image/png', '.json': 'application/json' };
 const send = (res, code, obj) => { res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(obj)); };
 const body = (req, max = 65536) => new Promise((ok, fail) => { let d = ''; req.on('data', c => { d += c; if (d.length > max) { fail(new Error('För stor förfrågan.')); req.destroy(); } });
   req.on('end', () => { try { ok(d ? JSON.parse(d) : {}); } catch { fail(new Error('Ogiltig JSON.')); } }); });
@@ -716,6 +782,7 @@ async function status() {
     net: { rx: net.rx, tx: net.tx, rxRate: net.rxRate, txRate: net.txRate, hist: net.hist, since: net.since, local: localIps(), publicIp: pubIp.ip },
     ports: ports.list, servers: cfg.servers.map(serverView), templates: TEMPLATES,
     steamcmd: { path: steamcmdPath(), installing: scInstall, error: scErr }, serversDir: cfg.serversDir, arcadePort: APORT,
+    version: VERSION, update: { latest: upd.latest, available: !!upd.latest && newer(upd.latest, VERSION), busy: upd.busy, step: upd.step, error: upd.error },
     power: { ...power, autostart: await checkAutostart(), service: SERVICE, macs: macs() }, events: recentEvents(12), totpOn: !!cfg.totp,
     notify: (n => ({ ntfy: n.ntfy || '', ntfyOn: n.ntfyOn !== false, discord: !!n.discord, discordName: n.discordName || '', discordOn: n.discordOn !== false,
       events: Object.fromEntries(Object.keys(KINDS).map(k => [k, wants(k)])), error: notifyErr }))(cfg.notify || {}),
@@ -839,6 +906,13 @@ async function api(req, res, url) {
   if (p === '/api/2fa/disable' && m === 'POST') { const b = await body(req);
     if (!checkPw(b.password || '')) return send(res, 401, { error: 'Fel lösenord.' });
     delete cfg.totp; save(); logAccess(req, 'tvåstegsinloggning avstängd'); return send(res, 200, { ok: true }); }
+  if (p === '/api/update' && m === 'GET') { let err = '';
+    if (url.searchParams.get('check')) await checkUpdate(true).catch(e => { err = e.message; });
+    return send(res, 200, { current: VERSION, latest: upd.latest, notes: upd.notes, available: !!upd.latest && newer(upd.latest, VERSION), method: GIT_DIR ? 'git' : 'paket',
+      busy: upd.busy, step: upd.step, error: err || upd.error }); }
+  if (p === '/api/update' && m === 'POST') { const b = await body(req); if (!checkPw(b.password || '')) return send(res, 401, { error: 'Fel lösenord.' });
+    if (!GIT_DIR) { await checkUpdate(true); if (!newer(upd.latest, VERSION) && !b.force) return send(res, 400, { error: 'Du har redan senaste versionen.' }); }
+    logAccess(req, 'uppdatering startad'); applyUpdate().catch(() => {}); return send(res, 200, { ok: true }); }
   if (p === '/api/syncusers' && m === 'GET') return send(res, 200, { users: Object.entries(syncUsers()).map(([n, u]) => ({ name: n, created: u.created, last: u.last || 0,
     devices: (u.tokens || []).length, size: ['dator', 'telefon'].reduce((t, pr) => { try { return t + fs.statSync(syncFile(n, pr)).size; } catch { return t; } }, 0) })) });
   if (p === '/api/syncusers' && m === 'POST') {
@@ -853,7 +927,7 @@ async function api(req, res, url) {
   if (p === '/api/arcade/list' && m === 'GET') return send(res, 200, arcadeList());
   if (p === '/api/arcade/upload' && m === 'POST') return arcadeUpload(req, res, url);
   if (p === '/api/arcade/delete' && m === 'POST') { const b = await body(req); fs.rmSync(romPath(b.system, b.name), { force: true }); return send(res, 200, { ok: true }); }
-  if (p === '/api/logout' && m === 'POST') { sessions.delete(cookieTok(req)); return send(res, 200, { ok: true }); }
+  if (p === '/api/logout' && m === 'POST') { sessions.delete(tokHash(cookieTok(req))); saveSessions(); return send(res, 200, { ok: true }); }
   if (p === '/api/status' && m === 'GET') return send(res, 200, await status());
   if (p.startsWith('/api/lab/')) return labApi(req, res, url, m);
   if (p === '/api/settings' && m === 'POST') {
@@ -958,4 +1032,4 @@ mkServer(async (req, res) => {
 
 sampleCpu(); sampleNet(); startup(); beat();
 setInterval(sampleCpu, 2000); setInterval(sampleNet, 2000); setInterval(() => sampleServers().catch(() => {}), 8000);
-setInterval(beat, 60000); setInterval(() => scheduler().catch(() => {}), 60000); setInterval(() => watchSystem().catch(() => {}), 300000);
+setInterval(beat, 60000); setTimeout(() => checkUpdate().catch(() => {}), 20000); setInterval(() => checkUpdate().catch(() => {}), 6 * 3600e3); setInterval(() => scheduler().catch(() => {}), 60000); setInterval(() => watchSystem().catch(() => {}), 300000);

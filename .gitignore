@@ -7,3 +7,6 @@ server/data/
 
 # datorbryggans byggmapp (zip-filen med programmet committas)
 desktop/helper/dist/
+
+# Node som hämtas av Starta V.I.C.T.O.R. Server.cmd
+server/runtime/

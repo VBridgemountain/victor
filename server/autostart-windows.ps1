@@ -1,4 +1,4 @@
-# Startar V.I.C.T.O.R. Server automatiskt när datorn startar, utan att någon behöver logga in.
+﻿# Startar V.I.C.T.O.R. Server automatiskt när datorn startar, utan att någon behöver logga in.
 # Programmet körs som en schemalagd uppgift (som SYSTEM) och startas om av Windows om det skulle stängas.
 #
 #   Slå på:   högerklicka på installera-autostart.cmd → Kör som administratör (eller kör den här filen som administratör)
@@ -25,7 +25,9 @@ if ($Remove) {
   if (-not $Quiet) { Read-Host 'Tryck Enter för att stänga' }; exit
 }
 
-$node = (Get-Command node -ErrorAction SilentlyContinue).Source
+$node = Join-Path $PSScriptRoot 'runtime
+ode.exe'   # Node som följer med (hämtas av Starta V.I.C.T.O.R. Server.cmd), annars den installerade
+if (-not (Test-Path $node)) { $node = (Get-Command node -ErrorAction SilentlyContinue).Source }
 if (-not $node) { Write-Host 'Hittar inte Node.js. Installera det från nodejs.org och försök igen.'; if (-not $Quiet) { Read-Host 'Tryck Enter för att stänga' }; exit 1 }
 $script = Join-Path $PSScriptRoot 'server.js'
 
