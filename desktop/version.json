@@ -1,10 +1,9 @@
 {
-    "version":  "1.10.1",
+    "version":  "1.10.2",
     "date":  "2026-11-21",
     "notes":  [
-                  "Spel: ny knapp ⧉ som öppnar spelet i ett eget fönster, där mus, menyer och ljud fungerar som hos archive.org",
-                  "Val under Inställningar → Fönster: öppna alltid spel i eget fönster",
-                  "Kort instruktion i spelfönstret om hur man startar, fångar musen och får igång ljudet"
+                  "Spelen använder nu archive.org:s egen spelare, med deras knappar för ljud av/på och helskärm",
+                  "Samma spelare både inne i appen och i eget fönster (⧉)"
               ],
     "apk":  "https://vbridgemountain.github.io/victor/desktop/victor.apk"
 }
