@@ -4,3 +4,6 @@ desktop/android/res/mipmap-xxhdpi/ic_launcher.png
 
 # V.I.C.T.O.R. Server: lösenord, inställningar, loggar och hämtade spelservrar
 server/data/
+
+# datorbryggans byggmapp (zip-filen med programmet committas)
+desktop/helper/dist/

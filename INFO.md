@@ -117,10 +117,9 @@ En webbsida kan inte se datorns program. Datorbryggan är ett litet hjälpprogra
 
 **Kom igång**
 
-1. Installera [Node.js](https://nodejs.org).
-2. Hämta mappen `desktop/helper` och dubbelklicka på `starta-brygga.cmd`.
-3. Öppna http://127.0.0.1:8770 på datorn och kopiera kopplingskoden.
-4. I V.I.C.T.O.R.: Inställningar → Datorbrygga → klistra in koden → Anslut.
+1. Ladda ner [victor-brygga.zip](https://vbridgemountain.github.io/victor/desktop/helper/victor-brygga.zip), packa upp och dubbelklicka på `victor-brygga.exe` (varnar Windows: Mer information → Kör ändå). Ingen Node.js behövs.
+2. Öppna http://127.0.0.1:8770 på datorn, kopiera kopplingskoden och bocka gärna i "Starta automatiskt".
+3. I V.I.C.T.O.R.: Inställningar → Datorbrygga → klistra in koden → Anslut.
 
 **Använda**
 

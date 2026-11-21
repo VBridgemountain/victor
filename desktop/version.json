@@ -1,10 +1,10 @@
 {
-    "version":  "1.14.0",
+    "version":  "1.15.0",
     "date":  "2026-11-21",
     "notes":  [
-                  "Konto och synk: logga in mot en V.I.C.T.O.R. Server så blir glober, widgets, idéer och rekord likadana på alla dina datorer (och på alla dina telefoner)",
-                  "Synkar automatiskt när något ändras och när appen öppnas; har två enheter ändrat samtidigt får du välja vilken version som gäller",
-                  "Konton skapas av den som har servern, under Inställningar → Konton för synk i serverpanelen"
+                  "Datorbryggan finns nu som färdigt Windows-program: ladda ner, dubbelklicka, klart (ingen Node.js behövs)",
+                  "Bryggans startsida har en ruta för att starta den automatiskt med Windows",
+                  "Konto och synk (från 1.14): samma glober på alla dina enheter via en V.I.C.T.O.R. Server"
               ],
     "apk":  "https://vbridgemountain.github.io/victor/desktop/victor.apk"
 }

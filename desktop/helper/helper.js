@@ -22,7 +22,10 @@ const ORIGINS = new Set(['https://vbridgemountain.github.io', 'http://localhost:
 
 const STARTUP = path.join(process.env.APPDATA || '', 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup', 'victor-brygga.vbs');
 if (process.argv.includes('--autostart')) {   // dolt fönster vid inloggning
-  fs.writeFileSync(STARTUP, `CreateObject("WScript.Shell").Run """${process.execPath}"" ""${__filename}""", 0, False\r\n`);
+  // som färdigt program (.exe) startas programmet självt, annars Node med skriptet
+  const isSea = (() => { try { return require('node:sea').isSea(); } catch { return false; } })();
+  const cmd = isSea ? `""${process.execPath}""` : `""${process.execPath}"" ""${__filename}""`;
+  fs.writeFileSync(STARTUP, `CreateObject("WScript.Shell").Run "${cmd}", 0, False\r\n`);
   console.log('Bryggan startar nu automatiskt vid inloggning.\n' + STARTUP); process.exit(0);
 }
 if (process.argv.includes('--no-autostart')) { fs.rmSync(STARTUP, { force: true }); console.log('Autostarten är borttagen.'); process.exit(0); }
@@ -239,7 +242,8 @@ const tokenOk = t => { const a = Buffer.from(String(t || '')), b = Buffer.from(c
 http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://x'), p = url.pathname, o = req.headers.origin;
   res.setHeader('X-Content-Type-Options', 'nosniff');
-  if (o) {   // anrop från en webbsida: bara V.I.C.T.O.R. släpps in
+  const self = o === `http://127.0.0.1:${PORT}`;
+  if (o && !self) {   // anrop från en webbsida: bara V.I.C.T.O.R. släpps in
     if (!ORIGINS.has(o)) { res.writeHead(403); return res.end(); }
     res.setHeader('Access-Control-Allow-Origin', o); res.setHeader('Vary', 'Origin');
     res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type'); res.setHeader('Access-Control-Allow-Private-Network', 'true'); res.setHeader('Access-Control-Max-Age', '600');
@@ -253,7 +257,17 @@ http.createServer(async (req, res) => {
 <h1 style="font:600 15px Consolas,monospace;letter-spacing:.4em;color:#00d8ff">V.I.C.T.O.R. DATORBRYGGA</h1><p>Bryggan är igång. Klistra in den här koden i V.I.C.T.O.R. under Inställningar → Datorbrygga:</p>
 <p id="t" style="font:600 20px Consolas,monospace;color:#fff;user-select:all;overflow-wrap:anywhere">${cfg.token}</p>
 <button onclick="navigator.clipboard.writeText(document.getElementById('t').textContent).then(()=>this.textContent='Kopierad')" style="font:inherit;padding:8px 18px;background:#04303c;color:#fff;border:1px solid #00d8ff;cursor:pointer">Kopiera koden</button>
-<p style="color:#7fa3b3;font-size:13px">Koden låter V.I.C.T.O.R. i din webbläsare starta program och se öppna fönster på den här datorn. Dela den inte.</p></div></body></html>`);
+<p style="color:#7fa3b3;font-size:13px">Koden låter V.I.C.T.O.R. i din webbläsare starta program och se öppna fönster på den här datorn. Dela den inte.</p>
+<p style="margin-top:22px"><label style="cursor:pointer"><input type="checkbox" id="as" ${fs.existsSync(STARTUP) ? 'checked' : ''} onchange="fetch('/setup/autostart?on='+(this.checked?1:0),{method:'POST'}).then(r=>r.json()).then(j=>document.getElementById('am').textContent=j.on?'Startar nu med Windows (utan fönster).':'Startar inte längre med Windows.')"> Starta bryggan automatiskt när jag loggar in i Windows</label></p>
+<p id="am" style="color:#7fa3b3;font-size:13px">Annars behöver programmet vara igång medan du använder V.I.C.T.O.R.</p></div></body></html>`);
+    }
+    if (p === '/setup/autostart' && req.method === 'POST' && self) {   // knappen på startsidan
+      const on = url.searchParams.get('on') === '1';
+      const isSea = (() => { try { return require('node:sea').isSea(); } catch { return false; } })();
+      const cmd = isSea ? `""${process.execPath}""` : `""${process.execPath}"" ""${__filename}""`;
+      if (on) fs.writeFileSync(STARTUP, `CreateObject("WScript.Shell").Run "${cmd}", 0, False
+`); else fs.rmSync(STARTUP, { force: true });
+      return send(res, 200, { ok: true, on });
     }
     if (p === '/thumb' && req.method === 'GET') {   // förhandsbild av ett öppet fönster (tas högst en gång per halvsekund)
       if (!tokenOk(url.searchParams.get('t'))) { res.writeHead(401); return res.end(); }

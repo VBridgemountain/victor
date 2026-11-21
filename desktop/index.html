@@ -419,7 +419,7 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
    ===================================================================== */
 const KEY = 'jarvis-desktop-v1';
 // Den här versionen av appen. Höj den vid varje ny version; android/build.ps1 skriver den till version.json och APK:n.
-const APP_VERSION = '1.14.0';
+const APP_VERSION = '1.15.0';
 const UPDATE_URL = 'https://vbridgemountain.github.io/victor/desktop/';
 // Finns bara när sidan körs inne i Android-launchern: brygga till telefonens appar (se android/MainActivity.java)
 // Microsoft-inloggningen (widgeten Microsoft 365 admin) öppnas i ett eget fönster och kommer tillbaka hit med ett svar i adressen.
@@ -1726,8 +1726,8 @@ function openHelperSetup(then) {
   const step = (n, ...kids) => el('div', { class: 'row', style: 'align-items:flex-start;gap:10px;margin:7px 0' }, el('b', { class: 'mono', style: 'color:var(--accent)', text: n }), el('div', { class: 'grow' }, ...kids));
   openModal('Datorbrygga', el('div', {},
     el('p', { style: 'margin-top:0', text: 'En webbsida kan inte se datorns program själv. Datorbryggan är ett litet hjälpprogram som körs på din Windows-dator och låter ' + brand() + ' visa installerade program, starta dem och se vilka fönster som är öppna.' }),
-    step('1', 'Installera Node.js om du inte har det (nodejs.org).'),
-    step('2', 'Hämta mappen ', el('a', { class: 'lnk', href: 'https://github.com/VBridgemountain/victor/tree/main/desktop/helper', target: '_blank', rel: 'noopener', text: 'desktop/helper' }), ' och dubbelklicka på starta-brygga.cmd.'),
+    step('1', 'Ladda ner ', el('a', { class: 'lnk', href: UPDATE_URL + 'helper/victor-brygga.zip', text: 'victor-brygga.zip' }), ' (33 MB), packa upp den och dubbelklicka på victor-brygga.exe. Varnar Windows: välj Mer information → Kör ändå.'),
+    step('2', 'Ett fönster visar att bryggan är igång. Bocka gärna i "Starta automatiskt" på sidan i nästa steg, så behöver du inte starta den igen.'),
     step('3', 'Öppna ', el('a', { class: 'lnk', href: HELPER, target: '_blank', rel: 'noopener', text: '127.0.0.1:8770' }), ' på datorn, kopiera kopplingskoden och klistra in den här.'),
     el('form', { class: 'row', style: 'margin-top:12px', onsubmit: async e => { e.preventDefault(); state.helper = { token: t.value.trim() }; save();
         msg.textContent = 'Ansluter…';

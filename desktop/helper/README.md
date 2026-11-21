@@ -10,12 +10,22 @@ En webbsida får inte göra det själv, därför behövs bryggan. Den behövs ba
 
 ## Kom igång
 
-1. Installera [Node.js](https://nodejs.org).
-2. Hämta den här mappen och dubbelklicka på `starta-brygga.cmd`.
-3. Öppna http://127.0.0.1:8770 på datorn och kopiera kopplingskoden.
+1. Ladda ner [victor-brygga.zip](https://vbridgemountain.github.io/victor/desktop/helper/victor-brygga.zip) (33 MB) och packa upp den.
+2. Dubbelklicka på `victor-brygga.exe`. Varnar Windows (SmartScreen, programmet är inte signerat): välj **Mer information → Kör ändå**.
+3. Öppna http://127.0.0.1:8770, kopiera kopplingskoden och bocka gärna i **Starta automatiskt när jag loggar in i Windows**.
 4. I V.I.C.T.O.R.: Inställningar → Datorbrygga → klistra in koden.
 
-Starta automatiskt vid inloggning: `node helper.js --autostart` (tas bort med `--no-autostart`).
+Ingen annan programvara behövs.
+
+### Med Node.js i stället
+
+Har du [Node.js](https://nodejs.org) kan du köra skriptet direkt: dubbelklicka på `starta-brygga.cmd` (eller `node helper.js`).
+Autostart: `node helper.js --autostart`, ta bort med `--no-autostart`.
+
+### Bygga programmet
+
+`powershell -ExecutionPolicy Bypass -File build-exe.ps1` bygger `victor-brygga.zip` från `helper.js` med Nodes "single executable application".
+Kräver Node.js och hämtar verktyget postject från npm.
 
 ## Säkerhet
 
