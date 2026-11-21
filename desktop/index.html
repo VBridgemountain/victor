@@ -419,7 +419,7 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
    ===================================================================== */
 const KEY = 'jarvis-desktop-v1';
 // Den här versionen av appen. Höj den vid varje ny version; android/build.ps1 skriver den till version.json och APK:n.
-const APP_VERSION = '1.13.0';
+const APP_VERSION = '1.14.0';
 const UPDATE_URL = 'https://vbridgemountain.github.io/victor/desktop/';
 // Finns bara när sidan körs inne i Android-launchern: brygga till telefonens appar (se android/MainActivity.java)
 // Microsoft-inloggningen (widgeten Microsoft 365 admin) öppnas i ett eget fönster och kommer tillbaka hit med ett svar i adressen.
@@ -515,7 +515,7 @@ const hexRgb = h => { const m = /^#?([0-9a-f]{6})$/i.exec(h || ''); if (!m) retu
 let saveT;
 function save() {
   clearTimeout(saveT);
-  saveT = setTimeout(() => { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch {} }, 150);
+  saveT = setTimeout(() => { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch {} if (!syncApplying) syncSoon(); }, 150);
 }
 
 /* =====================================================================
@@ -2088,6 +2088,9 @@ $('#bSettings').onclick = () => {
           oninput: e => { state.brand = { name: e.target.value.trim() }; applyBrand(); save(); } }),
         el('button', { class: 'btn', text: 'Återställ', onclick: () => { delete state.brand; applyBrand(); save(); $('#bSettings').click(); } })),
       el('p', { class: 'muted', style: 'margin:6px 0 0', text: 'Visas uppe till vänster och i fliken, alltid med "by NoirLab" under. Namnet på den installerade appen och Android-ikonen ändras inte.' })),
+    el('div', { class: 'field' }, el('span', { class: 'flabel', text: 'Konto och synk' }),
+      el('div', { class: 'row', style: 'align-items:center;flex-wrap:wrap' }, el('button', { class: 'btn', text: syncCfg() ? 'Konto: ' + syncCfg().user : 'Logga in och synka', onclick: openSyncSetup }),
+        el('span', { class: 'muted', text: syncCfg() ? (syncErr || 'Synkas automatiskt') : 'Samma glober på alla dina enheter, via en V.I.C.T.O.R. Server' }))),
     el('div', { class: 'field' }, el('span', { class: 'flabel', text: 'Glober och appar' }),
       el('div', { class: 'row', style: 'flex-wrap:wrap' },
         el('button', { class: 'btn', text: 'Öppna Glober', onclick: () => openApps() }),
@@ -2496,6 +2499,113 @@ function openGameSearch(gi) {
   q.focus(); search();
 }
 
+/* ---------- Konto och synk: samma glober på alla enheter, via din V.I.C.T.O.R. Server ---------- */
+// Allt utom det som hör till just den här datorn (datorbryggans kod, fönsterregler, rutornas platser) sparas på servern.
+// Datorer och telefoner har var sin profil, eftersom de har olika appar.
+const SYNC_KEY = 'victor-sync', SYNC_LOCAL = ['helper', 'prevPos', 'winRules', 'winAuto', 'updChecked', 'prev', 'taskbar'];
+let syncApplying = false, syncT = 0, syncBusy = false, syncErr = '';
+const syncCfg = () => { try { return JSON.parse(localStorage.getItem(SYNC_KEY)) || null; } catch { return null; } };
+const setSyncCfg = c => { try { c ? localStorage.setItem(SYNC_KEY, JSON.stringify(c)) : localStorage.removeItem(SYNC_KEY); } catch { } };
+const syncProfile = () => NATIVE ? 'telefon' : 'dator';
+const syncData = () => { const d = JSON.parse(JSON.stringify(state)); for (const k of SYNC_LOCAL) delete d[k]; return d; };
+const syncHash = () => { const t = JSON.stringify(syncData()); let h = 5381; for (let i = 0; i < t.length; i++) h = (h * 33 + t.charCodeAt(i)) | 0; return h + ':' + t.length; };
+const synced = (c, rev) => { Object.assign(c, { rev, dirty: false, at: Date.now(), hash: syncHash() }); setSyncCfg(c); };
+async function syncFetch(method, path, data) {
+  const c = syncCfg(); if (!c) throw new Error('Inte inloggad.');
+  const r = await fetch(c.url + path, { method, cache: 'no-store', headers: Object.assign({ Authorization: 'Bearer ' + c.token }, data ? { 'Content-Type': 'application/json' } : {}),
+    body: data ? JSON.stringify(data) : undefined });
+  const j = await r.json().catch(() => ({}));
+  if (r.status === 401) { syncErr = 'Inloggningen har gått ut. Logga in igen under Inställningar.'; throw new Error(syncErr); }
+  if (r.status === 409) { const e = new Error('krock'); e.server = j; throw e; }
+  if (!r.ok) throw new Error(j.error || 'Servern svarade med fel ' + r.status);
+  return j;
+}
+function applySynced(remote) {   // ta in en version från servern utan att ladda om sidan
+  const keep = {}; for (const k of SYNC_LOCAL) if (k in state) keep[k] = state[k];
+  syncApplying = true;
+  try {
+    for (const k of Object.keys(state)) delete state[k];
+    Object.assign(state, remote.data, keep);
+    state.globes = state.globes && state.globes.length ? state.globes : [newGlobe('Glob')];
+    state.globes.forEach(g => { g.apps = g.apps || []; g.ideas = g.ideas || []; });
+    state.active = clamp(state.active | 0, 0, state.globes.length - 1); openFolder = null;
+    localStorage.setItem(KEY, JSON.stringify(state));
+    wLayer.textContent = ''; mounted.clear(); state.widgets = state.widgets || []; state.widgets.forEach(mountWidget); clampWidgets();
+    setTheme(state.theme); applyBrand(); greet(); buildDock(); buildScene();
+  } catch (e) { location.reload(); }
+  finally { syncApplying = false; }
+  const c = syncCfg(); if (c) synced(c, remote.rev);
+}
+function syncSoon() { const c = syncCfg(); if (!c) return; if (c.hash && c.hash === syncHash()) return;   // inget har egentligen ändrats
+  if (!c.dirty) { c.dirty = true; setSyncCfg(c); } clearTimeout(syncT); syncT = setTimeout(() => syncNow(), 2500); }
+// Krock: både den här enheten och en annan har ändrat sedan senaste synk. Användaren väljer vilken som gäller.
+function syncConflict(server) {
+  return new Promise(res => {
+    const when = server.at ? new Date(server.at).toLocaleString('sv-SE', { dateStyle: 'short', timeStyle: 'short' }) : 'tidigare';
+    openModal('Ändrat på två ställen', el('div', {},
+      el('p', { style: 'margin-top:0', text: `Både den här enheten och ${server.dev || 'en annan enhet'} (${when}) har ändrat sedan senaste synk. Vilken version ska gälla?` }),
+      el('div', { class: 'row', style: 'flex-wrap:wrap' },
+        el('button', { class: 'btn on', text: 'Behåll den här enhetens', onclick: () => { closeModal(); res('local'); } }),
+        el('button', { class: 'btn', text: 'Hämta den andra', onclick: () => { closeModal(); res('server'); } }))));
+    const iv = setInterval(() => { if (!modal.classList.contains('open') || $('#mTitle').textContent !== 'Ändrat på två ställen') { clearInterval(iv); res('later'); } }, 500);
+  });
+}
+async function syncNow(manual) {
+  const c = syncCfg(); if (!c || syncBusy) return; syncBusy = true;
+  try {
+    const remote = await syncFetch('GET', '/api/sync/data?profile=' + syncProfile());
+    if (remote.rev > (c.rev || 0) && !c.dirty) applySynced(remote);   // nyare på servern, inget ändrat här
+    else if (remote.rev > (c.rev || 0) && c.dirty) {
+      const choice = await syncConflict(remote);
+      if (choice === 'server') applySynced(remote);
+      else if (choice === 'local') { const r = await syncFetch('PUT', '/api/sync/data?profile=' + syncProfile(), { force: true, data: syncData(), device: deviceName() }); synced(c, r.rev); }
+    } else if (c.dirty || !remote.data) {
+      try { const r = await syncFetch('PUT', '/api/sync/data?profile=' + syncProfile(), { base: c.rev || 0, data: syncData(), device: deviceName() }); synced(c, r.rev); }
+      catch (e) { if (e.server) { c.rev = -1; setSyncCfg(c); syncBusy = false; return syncNow(manual); } throw e; }
+    } else { c.at = Date.now(); setSyncCfg(c); }
+    syncErr = '';
+    if (manual) toast('SYNK', 'Synkat med servern.');
+  } catch (e) { syncErr = e.message === 'Failed to fetch' ? 'Servern svarar inte.' : e.message; if (manual) toast('SYNK', syncErr, true); }
+  finally { syncBusy = false; }
+}
+const deviceName = () => (NATIVE ? 'telefonen' : 'en dator') + ' · ' + (navigator.userAgentData && navigator.userAgentData.platform || (navigator.platform || '')).slice(0, 20);
+function openSyncSetup() {
+  const c = syncCfg(), err = el('div', { class: 'muted', style: 'min-height:20px;margin-top:8px;color:#ff8a80' });
+  if (c) return openModal('Konto och synk', el('div', {},
+    el('p', { style: 'margin-top:0', text: `Inloggad som ${c.user} på ${c.url.replace(/^https?:\/\//, '')}. ${brand()} synkas automatiskt med servern när något ändras och när appen öppnas.` }),
+    el('div', { class: 'kv' }, el('span', { text: 'Senast synkad' }), el('span', { text: c.at ? new Date(c.at).toLocaleString('sv-SE', { dateStyle: 'short', timeStyle: 'short' }) : 'aldrig' })),
+    el('div', { class: 'kv' }, el('span', { text: 'Profil' }), el('span', { text: syncProfile() + ' (datorer och telefoner har var sin)' })),
+    syncErr ? el('p', { style: 'color:#ff8a80', text: syncErr }) : null,
+    el('div', { class: 'row', style: 'margin-top:12px;flex-wrap:wrap' },
+      el('button', { class: 'btn on', text: 'Synka nu', onclick: async () => { await syncNow(true); openSyncSetup(); } }),
+      el('button', { class: 'btn', text: 'Logga ut', onclick: async () => { try { await syncFetch('POST', '/api/sync/logout', {}); } catch { } setSyncCfg(null); closeModal(); toast('SYNK', 'Utloggad. Det som finns här ligger kvar på enheten.'); } }))));
+  const url = el('input', { class: 'in', placeholder: 'https://server.dindomän.se', 'aria-label': 'Serverns adress' }),
+        user = el('input', { class: 'in', placeholder: 'Användarnamn', 'aria-label': 'Användarnamn', autocomplete: 'username', style: 'margin-top:7px' }),
+        pass = el('input', { class: 'in', type: 'password', placeholder: 'Lösenord', 'aria-label': 'Lösenord', autocomplete: 'current-password', style: 'margin-top:7px' });
+  openModal('Konto och synk', el('form', { onsubmit: async e => { e.preventDefault(); err.textContent = 'Loggar in …';
+      let u = url.value.trim().replace(/\/+$/, ''); if (u && !/^https?:\/\//.test(u)) u = 'https://' + u;
+      if (location.protocol === 'https:' && /^http:\/\/(?!localhost|127\.)/.test(u)) { err.textContent = 'Adressen måste börja med https (t.ex. via Cloudflare-tunneln).'; return; }
+      try {
+        const r = await fetch(u + '/api/sync/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ user: user.value, password: pass.value, device: deviceName() }) });
+        const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.error || 'Inloggningen misslyckades.');
+        setSyncCfg({ url: u, user: j.user, token: j.token, rev: 0, dirty: false, at: 0 });
+        const remote = await syncFetch('GET', '/api/sync/data?profile=' + syncProfile());
+        if (remote.data) {   // det finns redan något sparat för kontot: fråga vad som ska gälla
+          const when = new Date(remote.at).toLocaleString('sv-SE', { dateStyle: 'short', timeStyle: 'short' });
+          openModal('Det finns redan sparade glober', el('div', {},
+            el('p', { style: 'margin-top:0', text: `Kontot ${j.user} har redan en sparad version från ${remote.dev || 'en annan enhet'} (${when}). Vilken ska gälla här?` }),
+            el('div', { class: 'row', style: 'flex-wrap:wrap' },
+              el('button', { class: 'btn on', text: 'Använd den sparade', onclick: () => { closeModal(); applySynced(remote); toast('SYNK', 'Hämtade dina glober från servern.'); } }),
+              el('button', { class: 'btn', text: 'Ersätt med den här enhetens', onclick: async () => { closeModal(); const c = syncCfg(); c.rev = remote.rev; c.dirty = true; c.hash = ''; setSyncCfg(c); await syncNow(true); } }))));
+        } else { const c = syncCfg(); c.dirty = true; c.hash = ''; setSyncCfg(c); await syncNow(); closeModal(); toast('SYNK', 'Inloggad. Den här enhetens glober är nu sparade på servern.'); }
+      } catch (x) { setSyncCfg(null); err.textContent = x.message === 'Failed to fetch' ? 'Får ingen kontakt med servern. Kontrollera adressen.' : x.message; } } },
+    el('p', { style: 'margin-top:0', text: 'Logga in med kontot du fått av den som har servern. Då sparas glober, widgets, idéer och rekord där och blir likadana på alla dina datorer (och på alla dina telefoner).' }),
+    url, user, pass, el('div', { class: 'row', style: 'margin-top:9px' }, el('button', { class: 'btn on', text: 'Logga in' })), err));
+  url.focus();
+}
+setInterval(() => { if (!document.hidden) syncNow(); }, 60000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) syncNow(); });
+
 /* ---------- Version och uppdateringar ---------- */
 // Jämför den här versionen med version.json på webben. Webbappen uppdateras genom att laddas om,
 // Android-appen genom att den nya APK:n laddas ner och installeras över den gamla.
@@ -2550,6 +2660,7 @@ if (!NATIVE && 'serviceWorker' in navigator && location.protocol.startsWith('htt
 if (!NATIVE) helperConnect().then(ok => { if (ok) refresh('running'); loadTaskbar(); });   // datorbryggan, om den är kopplad
 
 applyBrand();
+setTimeout(() => syncNow(), 1500);   // hämta det senaste från servern om kontot är inloggat
 if (!NATIVE) { migrateGamePack(); if (!state.gamePack) addGamePack(); else if ((state.gamePackV || 1) < 2) {   // nya klassiker till den som har mappen
   const f = (state.globes.find(x => x.name === PACK_GLOBE) || { apps: [] }).apps.find(x => x.folder && x.name === PACK_NAME);
   if (f) for (const [id, name] of GAME_PACK_2) if (!f.apps.some(a => a.game === id)) f.apps.push({ id: uid(), icon: '', name, url: 'https://archive.org/details/' + id, game: id });

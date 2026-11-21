@@ -442,6 +442,30 @@ function openNotify() {
     n.error && h('p', { class: 'err' }, 'Senaste notisen gick inte fram: ' + n.error), err,
     h('div', { class: 'row' }, h('button', { class: 'btn pri', onclick: () => sendIt(false) }, 'Spara'), h('button', { class: 'btn', onclick: () => sendIt(true) }, 'Spara och skicka test'))));
 }
+// Konton för synk av V.I.C.T.O.R.: dina vänner och kollegor får egna konton som bara kommer åt sina egna glober, aldrig panelen
+async function openSyncUsers(shown) {
+  editing = true;
+  const j = await call('GET', '/api/syncusers'), name = h('input', { class: 'in', placeholder: 'användarnamn, t.ex. anna', maxlength: 32 }), err = h('div', { class: 'err' });
+  const act2 = async (data, ask) => { if (ask && !confirm(ask)) return; err.textContent = '';
+    try { const r = await call('POST', '/api/syncusers', data); openSyncUsers(r.password ? r : null); } catch (v) { err.textContent = v.message; } };
+  const addr = location.origin;
+  modal('Konton för synk', h('div', null,
+    h('p', { style: 'margin-top:0' }, 'Med ett konto sparas glober, widgets, idéer och rekord på den här servern och synkas mellan personens datorer, och mellan telefoner. Kontot kommer bara åt sin egen data, aldrig panelen.'),
+    shown && h('div', { style: 'border:1px solid var(--accent);padding:10px 12px;margin-bottom:12px;background:var(--panel)' },
+      h('b', null, 'Uppgifter för ' + shown.name), h('p', { class: 'note', style: 'margin:4px 0' }, 'Visas bara nu. Skicka dem till personen, som fyller i dem i V.I.C.T.O.R. under Inställningar → Konto och synk.'),
+      h('div', { class: 'kv' }, h('span', null, 'Server'), h('span', null, addr)), h('div', { class: 'kv' }, h('span', null, 'Användarnamn'), h('span', null, shown.name)),
+      h('div', { class: 'kv' }, h('span', null, 'Lösenord'), h('span', { style: 'user-select:all' }, shown.password)),
+      h('div', { class: 'row', style: 'margin-top:8px' }, h('button', { class: 'btn', onclick: () => navigator.clipboard.writeText(`Server: ${addr}\nAnvändarnamn: ${shown.name}\nLösenord: ${shown.password}`).then(() => toast('Kopierat.'), () => toast('Markera och kopiera för hand.')) }, 'Kopiera uppgifterna'))),
+    location.protocol !== 'https:' && h('p', { class: 'note' }, 'Den publicerade appen kan bara synka mot en https-adress. Använd serverns adress via Cloudflare-tunneln. Ligger Cloudflare Access framför panelen behöver sökvägen /api/sync/ en egen regel med Bypass.'),
+    h('label', null, 'Konton'),
+    j.users.length ? h('div', { class: 'ports', style: 'max-height:260px;border:1px solid var(--line)' }, h('table', null, h('tr', null, ['Namn', 'Senast synkad', 'Enheter', 'Storlek', ''].map(t => h('th', null, t))),
+      j.users.map(u => h('tr', null, h('td', null, u.name), h('td', null, u.last ? fmtTime(u.last) : 'aldrig'), h('td', null, u.devices), h('td', null, fmtB(u.size)),
+        h('td', null, h('button', { class: 'mini', onclick: () => act2({ action: 'reset', name: u.name }, `Nytt lösenord för ${u.name}? Personen loggas ut på alla enheter.`) }, 'Nytt lösenord'), ' ',
+          h('button', { class: 'mini', onclick: () => act2({ action: 'delete', name: u.name }, `Ta bort kontot ${u.name} och all dess sparade data på servern? Det som finns på personens enheter ligger kvar.`) }, 'Ta bort'))))))
+      : h('p', { class: 'note' }, 'Inga konton än.'),
+    h('label', null, 'Nytt konto'), h('div', { class: 'row', style: 'margin-top:0' }, name, h('button', { class: 'btn pri', onclick: () => act2({ action: 'add', name: name.value }) }, 'Skapa')),
+    h('p', { class: 'note' }, 'Ett lösenord skapas automatiskt och visas en gång.'), err));
+}
 async function openEvents() {
   editing = true; let j; try { j = await call('GET', '/api/events'); } catch (v) { return toast(v.message); }
   modal('Händelser', h('div', null, j.events.length ? h('div', { style: 'max-height:60vh;overflow:auto' }, j.events.map(e => h('div', { class: 'ev ' + e.level }, h('time', null, fmtTime(e.t)), h('span', null, e.text))))
@@ -501,7 +525,8 @@ $('bSet').onclick = () => {
     h('label', null, 'Eller egen sökväg till SteamCMD'), sc,
     h('label', null, 'Mapp där spelservrar installeras'), dir,
     h('div', { class: 'row' }, h('button', { class: 'btn', onclick: () => openSecurity().catch(e => toast(e.message)) }, 'Säkerhet och fjärråtkomst …'),
-      h('button', { class: 'btn', onclick: openNotify }, 'Drift och notiser …')),
+      h('button', { class: 'btn', onclick: openNotify }, 'Drift och notiser …'),
+      h('button', { class: 'btn', onclick: () => openSyncUsers().catch(e => toast(e.message)) }, 'Konton för synk …')),
     err, h('div', { class: 'row' }, h('button', { class: 'btn pri', onclick: async () => {
       try { await call('POST', '/api/settings', { steamcmd: sc.value || undefined, serversDir: dir.value }); closeModal(); poll(); } catch (v) { err.textContent = v.message; } } }, 'Spara'))));
 };

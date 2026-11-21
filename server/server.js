@@ -667,6 +667,52 @@ async function status() {
 }
 // Översikt för V.I.C.T.O.R.-widgeten på dator och telefon: bara läsning, med en egen läsnyckel i stället för inloggning.
 // Det som behöver åtgärdas samlas i "alerts" (level: 'bad' = åtgärd behövs, 'warn' = håll koll).
+// ------------------------------------------------------------------ synk för V.I.C.T.O.R. (glober, widgets, idéer, rekord)
+// Egna konton, skilda från panelens inloggning: ett synk-konto kommer bara åt sin egen data, aldrig panelen.
+// Varje konto har två profiler, "dator" och "telefon", eftersom de har olika appar. Data skickas med en nyckel i stället för kaka.
+const SYNC = path.join(DATA, 'sync'), SYNC_MAX = 5 << 20;
+const syncUsers = () => (cfg.syncUsers = cfg.syncUsers || {});
+const syncName = n => String(n || '').trim().toLowerCase();
+const validName = n => /^[a-z0-9._-]{2,32}$/.test(n);
+const sha = t => crypto.createHash('sha256').update(String(t)).digest('hex');
+const syncFile = (u, prof) => path.join(SYNC, u, prof + '.json');
+const newPassword = () => crypto.randomBytes(9).toString('base64url');
+function syncUser(req) {   // vem nyckeln tillhör
+  const t = (req.headers.authorization || '').replace(/^Bearer\s+/i, ''); if (t.length < 20) return null;
+  const h = sha(t); for (const [n, u] of Object.entries(syncUsers())) if ((u.tokens || []).some(x => x.h === h)) return { name: n, u, h };
+  return null;
+}
+function readSync(u, prof) { try { return JSON.parse(fs.readFileSync(syncFile(u, prof), 'utf8')); } catch { return { rev: 0, at: 0, data: null }; } }
+async function syncApi(req, res, url, m) {
+  res.setHeader('Access-Control-Allow-Origin', '*'); res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, PUT, POST, OPTIONS'); res.setHeader('Access-Control-Max-Age', '600');
+  if (m === 'OPTIONS') { res.writeHead(204); return res.end(); }
+  const p = url.pathname, ip = clientIp(req);
+  if (p === '/api/sync/login' && m === 'POST') {
+    if (locked(ip)) return send(res, 429, { error: 'För många försök. Vänta en stund.' });
+    const b = await body(req), n = syncName(b.user), u = syncUsers()[n];
+    const ok = u && crypto.timingSafeEqual(crypto.scryptSync(String(b.password || ''), u.pass.salt, 32), Buffer.from(u.pass.hash, 'hex'));
+    if (!ok) { failed(ip); return send(res, 401, { error: 'Fel användarnamn eller lösenord.' }); }
+    const t = crypto.randomBytes(32).toString('base64url');
+    u.tokens = [...(u.tokens || []), { h: sha(t), at: Date.now(), dev: clean(b.device, 60) }].slice(-10); save();
+    logAccess(req, 'synk-inloggning ' + n); return send(res, 200, { token: t, user: n });
+  }
+  const who = syncUser(req); if (!who) { if (req.headers.authorization) failed(ip); return send(res, 401, { error: 'Logga in igen.' }); }
+  if (p === '/api/sync/logout' && m === 'POST') { who.u.tokens = who.u.tokens.filter(x => x.h !== who.h); save(); return send(res, 200, { ok: true }); }
+  const prof = url.searchParams.get('profile'); if (!/^(dator|telefon)$/.test(prof || '')) return send(res, 400, { error: 'Okänd profil.' });
+  if (p === '/api/sync/data' && m === 'GET') return send(res, 200, readSync(who.name, prof));
+  if (p === '/api/sync/data' && m === 'PUT') {
+    const b = await body(req, SYNC_MAX), cur = readSync(who.name, prof);
+    if (!b.data || typeof b.data !== 'object' || !Array.isArray(b.data.globes)) return send(res, 400, { error: 'Ogiltig data.' });
+    if (!b.force && (+b.base | 0) !== cur.rev) return send(res, 409, cur);   // någon annan enhet har sparat sedan dess
+    const next = { rev: cur.rev + 1, at: Date.now(), dev: clean(b.device, 60), data: b.data };
+    fs.mkdirSync(path.dirname(syncFile(who.name, prof)), { recursive: true });
+    fs.writeFileSync(syncFile(who.name, prof) + '.tmp', JSON.stringify(next)); fs.renameSync(syncFile(who.name, prof) + '.tmp', syncFile(who.name, prof));
+    who.u.last = Date.now(); save();
+    return send(res, 200, { rev: next.rev, at: next.at });
+  }
+  send(res, 404, { error: 'Finns inte.' });
+}
 async function summary(req) {
   const d = await disk(), mem = 1 - os.freemem() / os.totalmem(), alerts = sysAlerts(d).map(({ level, text }) => ({ level, text })), add = (level, text) => alerts.push({ level, text });
   if (Date.now() - agentStart < 3600000 && power.downFrom && power.reason !== 'programmet var stoppat') add('warn', `Servern startades nyss igen efter ${power.reason}.`);
@@ -684,6 +730,7 @@ async function summary(req) {
 }
 async function api(req, res, url) {
   const p = url.pathname, m = req.method;
+  if (p.startsWith('/api/sync/')) return syncApi(req, res, url, m);   // V.I.C.T.O.R.-appen på andra adresser, egen nyckel
   if (p === '/api/summary') {   // nås från en annan webbadress (skrivbordsappen), därför egna CORS-huvuden och nyckel i stället för kaka
     res.setHeader('Access-Control-Allow-Origin', '*'); res.setHeader('Access-Control-Allow-Headers', 'Authorization'); res.setHeader('Access-Control-Max-Age', '600');
     if (m === 'OPTIONS') { res.writeHead(204); return res.end(); }
@@ -728,6 +775,17 @@ async function api(req, res, url) {
   if (p === '/api/2fa/disable' && m === 'POST') { const b = await body(req);
     if (!checkPw(b.password || '')) return send(res, 401, { error: 'Fel lösenord.' });
     delete cfg.totp; save(); logAccess(req, 'tvåstegsinloggning avstängd'); return send(res, 200, { ok: true }); }
+  if (p === '/api/syncusers' && m === 'GET') return send(res, 200, { users: Object.entries(syncUsers()).map(([n, u]) => ({ name: n, created: u.created, last: u.last || 0,
+    devices: (u.tokens || []).length, size: ['dator', 'telefon'].reduce((t, pr) => { try { return t + fs.statSync(syncFile(n, pr)).size; } catch { return t; } }, 0) })) });
+  if (p === '/api/syncusers' && m === 'POST') {
+    const b = await body(req), n = syncName(b.name), us = syncUsers();
+    if (b.action === 'add') { if (!validName(n)) throw new Error('Användarnamnet ska vara 2–32 tecken: a–z, 0–9, punkt, - eller _.'); if (us[n]) throw new Error('Det finns redan ett konto med det namnet.');
+      const pw = newPassword(); us[n] = { pass: hashPw(pw), created: Date.now(), tokens: [] }; save(); logAccess(req, 'nytt synk-konto ' + n); return send(res, 200, { name: n, password: pw }); }
+    if (!us[n]) throw new Error('Kontot finns inte.');
+    if (b.action === 'reset') { const pw = newPassword(); us[n].pass = hashPw(pw); us[n].tokens = []; save(); logAccess(req, 'nytt lösenord för synk-konto ' + n); return send(res, 200, { name: n, password: pw }); }
+    if (b.action === 'delete') { delete us[n]; fs.rmSync(path.join(SYNC, n), { recursive: true, force: true }); save(); logAccess(req, 'synk-konto borttaget ' + n); return send(res, 200, { ok: true }); }
+    throw new Error('Okänd åtgärd.');
+  }
   if (p === '/api/arcade/list' && m === 'GET') return send(res, 200, arcadeList());
   if (p === '/api/arcade/upload' && m === 'POST') return arcadeUpload(req, res, url);
   if (p === '/api/arcade/delete' && m === 'POST') { const b = await body(req); fs.rmSync(romPath(b.system, b.name), { force: true }); return send(res, 200, { ok: true }); }

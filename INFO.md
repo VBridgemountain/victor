@@ -82,6 +82,11 @@ Grupper kan bli egna glober (befintliga med samma namn fylls på) eller hamna i 
 
 **Version och uppdatering:** Inställningar → Version visar vilken version du har. Sök uppdatering jämför med den senaste, och appen kollar själv en gång per dygn och säger till om en ny finns. Uppdatera nu laddar om webbappen med den nya versionen. I Android-appen laddas den nya APK:n ner, och du installerar den över den gamla.
 
+**Konto och synk:** med ett konto på en V.I.C.T.O.R. Server blir glober, widgets, idéer, påminnelser och rekord likadana på alla dina datorer (och på alla dina telefoner; datorer och telefoner har var sin profil eftersom de har olika appar). Inställningar → **Logga in och synka**: fyll i serverns adress, användarnamn och lösenord. Synken sker automatiskt när något ändras, när appen öppnas och varje minut. Har två enheter ändrat samtidigt får du välja vilken version som gäller. Det som hör till en viss dator (datorbryggans kod, fönsterregler, förhandsrutornas platser) synkas inte.
+
+- **Konton** skapas av den som har servern: serverpanelen → Inställningar → **Konton för synk** → Skapa. Lösenordet visas en gång och kan kopieras tillsammans med serveradressen. Ett synk-konto kommer bara åt sin egen data, aldrig panelen.
+- Från den publicerade appen krävs serverns **https**-adress (Cloudflare-tunneln). Ligger Cloudflare Access framför panelen behöver sökvägen `/api/sync/` en egen regel med **Bypass**.
+
 **Data:** allt sparas i webbläsaren på den enheten. Flytta mellan enheter med Exportera/Importera under Inställningar. Dator och telefon delar inte data.
 
 ---
