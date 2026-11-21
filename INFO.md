@@ -58,6 +58,8 @@ De delar utseende men inte kod, och ingen av dem kräver den andra.
 
 **Spel från archive.org:** Glober → **+ Spel från archive.org**. Välj samling (MS-DOS, Windows 3.x, arkad, konsoler, Commodore 64, Apple II), sök eller klistra in en länk från archive.org, och tryck **Spela** eller **Lägg till**. Spelet öppnas i ett eget fönster inne i appen: dra i titelraden för att flytta, i nedre högra hörnet för att ändra storlek, ⛶ för helskärm, — för att minimera. Klicka i spelet innan du spelar, så att tangentbordet styr det. Spelen körs hos Internet Archive och laddas inte ner till datorn eller servern.
 
+**Klassiska spel:** på datorn finns globen "Klassiska spel" med 31 av de mest spelade spelen hos archive.org (MS-DOS, arkad och Windows 3.x). Ta bort spel du inte vill ha som vanliga appar, eller hela globen. **Ladda in klassikerna** (i spelsökningen eller Inställningar → Glober och appar) lägger tillbaka det som saknas och skapar globen igen om den är borttagen.
+
 **Sortera och flytta appar:** i Glober, dra i ⠿ framför en app för att ändra ordning, eller släpp den på en glob i flikraden för att flytta den dit. Menyn "Flytta till…" på varje rad gör samma sak.
 
 **Ikoner för webbadresser:** som standard hämtas webbplatsens egen ikon direkt från sajten. Tryck på ikonen i Glober för att välja webbplatsens ikon, första bokstaven, en emoji eller en bildadress. Vill du inte ha webbplatsernas ikoner alls: Inställningar → stäng av "Hämta webbplatsernas egna ikoner".

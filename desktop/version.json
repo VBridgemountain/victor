@@ -1,10 +1,10 @@
 {
-    "version":  "1.8.0",
+    "version":  "1.9.0",
     "date":  "2026-11-21",
     "notes":  [
-                  "Spela gamla spel från archive.org i ett eget fönster inne i appen: MS-DOS, Windows 3.x, arkad, konsoler, Commodore 64 och Apple II",
-                  "Glober → + Spel från archive.org: sök, spela direkt eller lägg spelet som app i en glob",
-                  "Spelfönstret går att flytta, ändra storlek på, minimera och köra i helskärm"
+                  "Ny glob \"Klassiska spel\" med 31 av de mest spelade spelen genom tiderna: Prince of Persia, Wolfenstein 3D, Doom II, SimCity, Pac-Man, Out Run, Q*Bert, Minesweeper med flera",
+                  "Ta bort de spel du inte vill ha; Ladda in klassikerna lägger tillbaka dem (i spelsökningen och i Inställningar)",
+                  "Tas hela globen bort kommer den inte tillbaka av sig själv"
               ],
     "apk":  "https://vbridgemountain.github.io/victor/desktop/victor.apk"
 }

@@ -410,7 +410,7 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
    ===================================================================== */
 const KEY = 'jarvis-desktop-v1';
 // Den här versionen av appen. Höj den vid varje ny version; android/build.ps1 skriver den till version.json och APK:n.
-const APP_VERSION = '1.8.0';
+const APP_VERSION = '1.9.0';
 const UPDATE_URL = 'https://vbridgemountain.github.io/victor/desktop/';
 // Finns bara när sidan körs inne i Android-launchern: brygga till telefonens appar (se android/MainActivity.java)
 // Microsoft-inloggningen (widgeten Microsoft 365 admin) öppnas i ett eget fönster och kommer tillbaka hit med ett svar i adressen.
@@ -2003,7 +2003,8 @@ $('#bSettings').onclick = () => {
     el('div', { class: 'field' }, el('span', { class: 'flabel', text: 'Glober och appar' }),
       el('div', { class: 'row', style: 'flex-wrap:wrap' },
         el('button', { class: 'btn', text: 'Öppna Glober', onclick: () => openApps() }),
-        el('button', { class: 'btn', text: 'Importera länkar eller bokmärken', onclick: () => openImport(state.active) })),
+        el('button', { class: 'btn', text: 'Importera länkar eller bokmärken', onclick: () => openImport(state.active) }),
+        NATIVE ? null : el('button', { class: 'btn', text: 'Ladda in klassiska spel', onclick: () => { closeModal(); const r = loadGamePack(); openApps(r.gi); } })),
       el('label', { class: 'row', style: 'cursor:pointer;margin-top:9px;align-items:center' },
         el('input', { type: 'checkbox', class: 'chk', checked: state.siteIcons !== false, onchange: e => { state.siteIcons = e.target.checked; save(); buildScene(); } }),
         'Hämta webbplatsernas egna ikoner (av: första bokstaven visas)')),
@@ -2216,6 +2217,29 @@ function openGame(a) {
   });
   document.body.append(node); gameWins.set(id, node);
 }
+// Klassikerna: de mest spelade spelen i archive.org:s egna samlingar (MS-DOS, Internet Arcade, Windows 3.x)
+const GAME_PACK = [['msdos_Oregon_Trail_The_1990', 'The Oregon Trail'], ['msdos_Prince_of_Persia_1990', 'Prince of Persia'], ['msdos_Wolfenstein_3D_1992', 'Wolfenstein 3D'],
+  ['Doom-2', 'Doom II'], ['msdos_Pac-Man_1983', 'Pac-Man'], ['msdos_SimCity_1989', 'SimCity'], ['msdos_Disneys_Aladdin_1994', 'Aladdin'], ['msdos_Prehistorik_2_1993', 'Prehistorik 2'],
+  ['msdos_Stunts_1990', 'Stunts'], ['msdos_Where_in_the_World_is_Carmen_Sandiego_Enhanced_1989', 'Carmen Sandiego'], ['msdos_Dune_2_-_The_Building_of_a_Dynasty_1992', 'Dune II'],
+  ['msdos_Scorched_Earth_1991', 'Scorched Earth'], ['msdos_Golden_Axe_1990', 'Golden Axe'], ['msdos_Mario_Brothers_VGA_1990', 'Mario Bros. VGA'], ['msdos_Master_of_Orion_1993', 'Master of Orion'],
+  ['msdos_Indiana_Jones_and_The_Last_Crusade_1989', 'Indiana Jones: The Last Crusade'], ['arcade_outrun', 'Out Run'], ['arcade_defender', 'Defender'], ['arcade_joust', 'Joust'],
+  ['arcade_qbert', 'Q*Bert'], ['arcade_paperboy', 'Paperboy'], ['arcade_tron', 'Tron'], ['arcade_digdug', 'Dig Dug'], ['arcade_marble', 'Marble Madness'], ['arcade_mrdo', 'Mr. Do!'],
+  ['chips_challenge_windows_3.x', "Chip's Challenge"], ['win3_PipeDr3x', 'Pipe Dream'], ['win3_JezzBall', 'JezzBall'], ['rodents_revenge', "Rodent's Revenge"], ['win3_Mineswee', 'Minesweeper'], ['win3_WINSKI', 'SkiFree']];
+const PACK_NAME = 'Klassiska spel';
+// Lägger in klassikerna i en egen glob (skapas om den saknas). Spel som tagits bort kommer tillbaka; dubbletter hoppas över.
+function addGamePack() {
+  let g = state.globes.find(x => x.name === PACK_NAME), made = false;
+  if (!g) { g = newGlobe(); g.name = PACK_NAME; g.color = '#ff7a1a'; state.globes.push(g); made = true; }
+  let n = 0;
+  for (const [id, name] of GAME_PACK) if (!g.apps.some(a => a.game === id)) { g.apps.push({ id: uid(), icon: '', name, url: 'https://archive.org/details/' + id, game: id }); n++; }
+  state.gamePack = true; save(); buildScene();
+  return { added: n, made, gi: state.globes.indexOf(g) };
+}
+function loadGamePack() {
+  const r = addGamePack();
+  toast('SPEL', r.added ? `${r.added} klassiska spel ${r.made ? 'ligger nu i den nya globen' : 'lades till i globen'} "${PACK_NAME}".` : `Alla klassiska spel finns redan i "${PACK_NAME}".`);
+  return r;
+}
 const GAME_COLLS = [['softwarelibrary_msdos_games', 'MS-DOS'], ['softwarelibrary_win3_games', 'Windows 3.x'], ['internetarcade', 'Arkadspel'], ['consolelivingroom', 'Konsoler'],
   ['softwarelibrary_c64_games', 'Commodore 64'], ['softwarelibrary_apple_games', 'Apple II']];
 function openGameSearch(gi) {
@@ -2246,7 +2270,10 @@ function openGameSearch(gi) {
   let tmr = 0; q.oninput = () => { clearTimeout(tmr); tmr = setTimeout(search, 450); }; coll.onchange = search;
   openModal('Spel från archive.org till ' + g.name, el('div', {},
     el('p', { style: 'margin-top:0', text: 'Gamla spel som körs direkt i ' + brand() + ' i ett eget fönster. Spelen ligger kvar hos Internet Archive; inget laddas ner till datorn eller servern.' }),
-    el('div', { class: 'row' }, q, coll), msg, list,
+    el('div', { class: 'row' }, q, coll),
+    el('div', { class: 'row', style: 'margin-top:8px;flex-wrap:wrap;align-items:center' }, el('button', { class: 'btn', text: 'Ladda in klassikerna (' + GAME_PACK.length + ' spel)', onclick: () => { const r = loadGamePack(); openApps(r.gi); } }),
+      el('span', { class: 'muted', text: 'De mest spelade spelen genom tiderna, i globen "' + PACK_NAME + '". Ta bort de du inte vill ha; knappen lägger tillbaka dem.' })),
+    msg, list,
     el('p', { class: 'muted', style: 'margin:10px 0 0', text: 'Tips: klicka i spelfönstret innan du spelar, så att tangentbordet styr spelet. Sparningar och prestanda sköts av archive.org.' }),
     el('div', { class: 'row', style: 'margin-top:10px' }, el('button', { class: 'btn', text: 'Klar', onclick: () => openApps(gi) }))));
   q.focus(); search();
@@ -2306,6 +2333,7 @@ if (!NATIVE && 'serviceWorker' in navigator && location.protocol.startsWith('htt
 if (!NATIVE) helperConnect().then(ok => { if (ok) refresh('running'); loadTaskbar(); });   // datorbryggan, om den är kopplad
 
 applyBrand();
+if (!NATIVE && !state.gamePack) { addGamePack(); }   // en gång: klassikerna finns i en egen glob; tas den bort kommer den inte tillbaka av sig själv
 if (Date.now() - (state.updChecked || 0) > 20 * 3600e3) setTimeout(() => checkUpdate().then(n => {
   if (n) toast('UPPDATERING', `Version ${n.version} finns. Öppna Inställningar → Version för att uppdatera.`, true); }), 6000);
 
