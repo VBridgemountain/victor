@@ -419,7 +419,7 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
    ===================================================================== */
 const KEY = 'jarvis-desktop-v1';
 // Den här versionen av appen. Höj den vid varje ny version; android/build.ps1 skriver den till version.json och APK:n.
-const APP_VERSION = '1.11.0';
+const APP_VERSION = '1.12.0';
 const UPDATE_URL = 'https://vbridgemountain.github.io/victor/desktop/';
 // Finns bara när sidan körs inne i Android-launchern: brygga till telefonens appar (se android/MainActivity.java)
 // Microsoft-inloggningen (widgeten Microsoft 365 admin) öppnas i ett eget fönster och kommer tillbaka hit med ett svar i adressen.
@@ -2323,6 +2323,13 @@ const GAME_PACK = [['msdos_Oregon_Trail_The_1990', 'The Oregon Trail'], ['msdos_
   ['msdos_Indiana_Jones_and_The_Last_Crusade_1989', 'Indiana Jones: The Last Crusade'], ['arcade_outrun', 'Out Run'], ['arcade_defender', 'Defender'], ['arcade_joust', 'Joust'],
   ['arcade_qbert', 'Q*Bert'], ['arcade_paperboy', 'Paperboy'], ['arcade_tron', 'Tron'], ['arcade_digdug', 'Dig Dug'], ['arcade_marble', 'Marble Madness'], ['arcade_mrdo', 'Mr. Do!'],
   ['chips_challenge_windows_3.x', "Chip's Challenge"], ['win3_PipeDr3x', 'Pipe Dream'], ['win3_JezzBall', 'JezzBall'], ['rodents_revenge', "Rodent's Revenge"], ['win3_Mineswee', 'Minesweeper'], ['win3_WINSKI', 'SkiFree']];
+// Fler klassiker (från version 1.12): läggs till i mappen hos den som redan har den, en gång
+const GAME_PACK_2 = [['doom_dos', 'Doom'], ['DUKE3D_DOS', 'Duke Nukem 3D'], ['duke-nukem2-sw', 'Duke Nukem II'], ['msdos_Earthworm_Jim_1995', 'Earthworm Jim'],
+  ['Keen4e-sw', 'Commander Keen 4'], ['msdos_Jazz_Jackrabbit_1994', 'Jazz Jackrabbit'], ['lemmings_original_ms-dos_201705', 'Lemmings'],
+  ['msdos_Secret_of_Monkey_Island_The_1990', 'The Secret of Monkey Island'], ['msdos_Monkey_Island_2_-_LeChucks_Revenge_1991', 'Monkey Island 2'],
+  ['msdos_Tetris_1986', 'Tetris'], ['msdos_Mortal_Kombat_1993', 'Mortal Kombat'], ['msdos_Need_for_Speed_The_1995', 'The Need for Speed'],
+  ['CIVILIZATION_201902', 'Civilization'], ['msdos_Lion_King_The_1994', 'The Lion King'], ['msdos_One_Must_Fall_2097_1994', 'One Must Fall 2097']];
+GAME_PACK.push(...GAME_PACK_2);
 const PACK_NAME = 'Klassiker', PACK_GLOBE = 'Spel';
 // Lägger in klassikerna i mappen Klassiker i globen Spel (båda skapas om de saknas). Spel som tagits bort kommer tillbaka; dubbletter hoppas över.
 function addGamePack() {
@@ -2332,7 +2339,7 @@ function addGamePack() {
   if (!f) { f = { id: uid(), folder: true, name: PACK_NAME, icon: '🕹️', apps: [] }; g.apps.unshift(f); }
   let n = 0;
   for (const [id, name] of GAME_PACK) if (!f.apps.some(a => a.game === id)) { f.apps.push({ id: uid(), icon: '', name, url: 'https://archive.org/details/' + id, game: id }); n++; }
-  state.gamePack = true; save(); buildScene();
+  state.gamePack = true; state.gamePackV = 2; save(); buildScene();
   return { added: n, made, gi: state.globes.indexOf(g), folder: f };
 }
 function loadGamePack() {
@@ -2380,7 +2387,22 @@ const GAME_HELP = {
   win3_JezzBall: 'Spelas med musen: vänsterklicka för att bygga en vägg, högerklicka för att byta mellan vågrät och lodrät. Stäng in bollarna tills 75 % av planen är täckt.',
   rodents_revenge: '[Piltangenterna] flyttar musen. Knuffa block så att katterna stängs in och blir till ost.',
   win3_Mineswee: 'Spelas med musen: vänsterklicka för att öppna en ruta, högerklicka för att sätta en flagga där du tror att en mina ligger. Siffrorna visar hur många minor som gränsar till rutan.',
-  win3_WINSKI: 'Styr åkaren med musen åt det håll du vill åka. [F] åker snabbare. Akta dig för träden och för det som jagar dig efter målet.'
+  win3_WINSKI: 'Styr åkaren med musen åt det håll du vill åka. [F] åker snabbare. Akta dig för träden och för det som jagar dig efter målet.',
+  doom_dos: '[Piltangenterna] går och vänder. [Ctrl] skjuter, [Mellanslag] öppnar dörrar och trycker på knappar, [Skift] springer, [Alt] + [←][→] går i sidled. [1]–[7] byter vapen, [Tab] visar kartan, [Esc] öppnar menyn.',
+  DUKE3D_DOS: '[Piltangenterna] går och vänder. [Ctrl] skjuter, [Mellanslag] öppnar och använder, [A] hoppar, [Z] hukar, [Skift] springer, [Alt] + [←][→] går i sidled. [1]–[0] byter vapen, [Tab] visar kartan, [Esc] öppnar menyn.',
+  'duke-nukem2-sw': '[←][→] springer, [↑] använder dörrar och föremål. Hopp och skott ligger på tangenterna som visas i spelets meny (oftast [Ctrl] och [Alt]).',
+  msdos_Earthworm_Jim_1995: '[Piltangenterna] springer och siktar. Hopp, skott och piska ligger på tangenterna som visas under spelets inställningar.',
+  'Keen4e-sw': '[←][→] springer, [Ctrl] hoppar, [Alt] använder pogostaven, [Mellanslag] skjuter. [↑] öppnar dörrar och använder saker. [Esc] öppnar menyn.',
+  msdos_Jazz_Jackrabbit_1994: '[Piltangenterna] springer och hukar. Hopp och skott ligger på tangenterna som visas i spelets meny.',
+  'lemmings_original_ms-dos_201705': 'Spelas med musen: välj en förmåga i raden längst ner (gräva, bygga, blockera …) och klicka på en lemming. Led dem till utgången. Klicka i spelet så fångas musen, [Esc] släpper den.',
+  msdos_Secret_of_Monkey_Island_The_1990: 'Äventyrsspel med musen: välj ett verb längst ner (gå, ta, använd, prata …) och klicka på det du vill använda det på. Klicka i spelet så fångas musen, [Esc] släpper den.',
+  'msdos_Monkey_Island_2_-_LeChucks_Revenge_1991': 'Äventyrsspel med musen: välj ett verb längst ner och klicka på det du vill använda det på. Klicka i spelet så fångas musen, [Esc] släpper den.',
+  msdos_Tetris_1986: 'Flytta, vrid och släpp bitarna med tangenterna som visas på skärmen (ofta [piltangenterna] och [Mellanslag]). Fyll hela rader så försvinner de.',
+  msdos_Mortal_Kombat_1993: '[Piltangenterna] rör din kämpe. Slag och sparkar ligger på tangenterna som visas under spelets inställningar.',
+  msdos_Need_for_Speed_The_1995: '[↑] gasar, [↓] bromsar och backar, [←][→] styr. [Esc] pausar och öppnar menyn.',
+  CIVILIZATION_201902: 'Spelas med mus och tangentbord: flytta enheter med [piltangenterna] eller siffertangenterna, bygg städer med [B]. Menyerna överst öppnas med musen.',
+  msdos_Lion_King_The_1994: '[Piltangenterna] springer, hukar och klättrar. Hopp och vrål ligger på tangenterna som visas under spelets inställningar.',
+  msdos_One_Must_Fall_2097_1994: 'Slagsmål med robotar: [piltangenterna] rör dig, slag och spark ligger på tangenterna som visas under spelets inställningar.'
 };
 // Allmänt för alla spel, och beskrivning efter typ för spel som saknas ovan
 const HELP_ALL = 'Klicka i spelet så att tangentbordet och musen styr det; [Esc] släpper musen. Undvik [Ctrl]+[R] och [Ctrl]+[W]: det är webbläsarens genvägar för att ladda om och stänga.';
@@ -2484,7 +2506,10 @@ if (!NATIVE && 'serviceWorker' in navigator && location.protocol.startsWith('htt
 if (!NATIVE) helperConnect().then(ok => { if (ok) refresh('running'); loadTaskbar(); });   // datorbryggan, om den är kopplad
 
 applyBrand();
-if (!NATIVE) { migrateGamePack(); if (!state.gamePack) addGamePack(); }   // en gång: klassikerna finns i en egen glob; tas den bort kommer den inte tillbaka av sig själv
+if (!NATIVE) { migrateGamePack(); if (!state.gamePack) addGamePack(); else if ((state.gamePackV || 1) < 2) {   // nya klassiker till den som har mappen
+  const f = (state.globes.find(x => x.name === PACK_GLOBE) || { apps: [] }).apps.find(x => x.folder && x.name === PACK_NAME);
+  if (f) for (const [id, name] of GAME_PACK_2) if (!f.apps.some(a => a.game === id)) f.apps.push({ id: uid(), icon: '', name, url: 'https://archive.org/details/' + id, game: id });
+  state.gamePackV = 2; save(); buildScene(); } }   // en gång: klassikerna finns i en egen glob; tas den bort kommer den inte tillbaka av sig själv
 if (Date.now() - (state.updChecked || 0) > 20 * 3600e3) setTimeout(() => checkUpdate().then(n => {
   if (n) toast('UPPDATERING', `Version ${n.version} finns. Öppna Inställningar → Version för att uppdatera.`, true); }), 6000);
 

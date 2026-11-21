@@ -60,7 +60,7 @@ De delar utseende men inte kod, och ingen av dem kräver den andra.
 
 **Mappar:** i Glober, tryck **+ Ny mapp** och lägg appar i den med **Flytta till…** på varje rad (eller **Öppna mappen** för att redigera innehållet). I globen klickar du på mappen för att zooma in ett steg till; scrolla ut, tryck Esc eller klicka på globens namn högst upp för att backa.
 
-**Klassiska spel:** på datorn finns mappen **Klassiker** i globen **Spel** med 31 av de mest spelade spelen hos archive.org (MS-DOS, arkad och Windows 3.x). Ta bort spel du inte vill ha, eller hela mappen. **Ladda in klassikerna** (i spelsökningen eller Inställningar → Glober och appar) lägger tillbaka det som saknas och skapar mappen igen om den är borttagen.
+**Klassiska spel:** på datorn finns mappen **Klassiker** i globen **Spel** med 46 av de mest spelade spelen hos archive.org (MS-DOS, arkad och Windows 3.x), bland annat Doom, Duke Nukem, Earthworm Jim, Prince of Persia, Monkey Island och Lemmings. Ta bort spel du inte vill ha, eller hela mappen. **Ladda in klassikerna** (i spelsökningen eller Inställningar → Glober och appar) lägger tillbaka det som saknas och skapar mappen igen om den är borttagen.
 
 **Sortera och flytta appar:** i Glober, dra i ⠿ framför en app för att ändra ordning, eller släpp den på en glob i flikraden för att flytta den dit. Menyn "Flytta till…" på varje rad gör samma sak.
 
