@@ -1,10 +1,9 @@
 {
-    "version":  "1.12.0",
+    "version":  "1.13.0",
     "date":  "2026-11-21",
     "notes":  [
-                  "15 nya klassiker i mappen Klassiker: Doom, Duke Nukem 3D, Duke Nukem II, Earthworm Jim, Commander Keen 4, Jazz Jackrabbit, Lemmings, Monkey Island 1 och 2, Tetris, Mortal Kombat, The Need for Speed, Civilization, The Lion King och One Must Fall 2097",
-                  "Kontroller för alla nya spel under ?",
-                  "Har du redan mappen läggs de nya spelen till av sig själva; spel du tagit bort kommer inte tillbaka"
+                  "Ny widget Rekord: skriv in dina poäng per spel och se topplistan, eller bästa resultat i alla spel",
+                  "Knappen 🏆 i spelfönstret sparar poängen direkt och säger till vid nytt rekord"
               ],
     "apk":  "https://vbridgemountain.github.io/victor/desktop/victor.apk"
 }

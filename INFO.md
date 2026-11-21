@@ -151,6 +151,7 @@ Ta bort autostarten med `node helper.js --no-autostart`.
 | Sök | Webbsökning | – |
 | System | Batteri, nätverk, skärm | – |
 | Timer | Nedräkning med larm | – |
+| Rekord | Dina egna poäng per spel, topplista eller bästa i varje spel. Spara direkt med 🏆 i spelfönstret | – |
 | IP och nätverk | Din publika IP, anslutning | Internet |
 | Server | Serverns status och varningar | V.I.C.T.O.R. Server + läsnyckel (avsnitt 12) |
 | Öppna program | Öppna fönster på datorn | Datorbryggan, bara dator |

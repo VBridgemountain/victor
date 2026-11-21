@@ -419,7 +419,7 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
    ===================================================================== */
 const KEY = 'jarvis-desktop-v1';
 // Den här versionen av appen. Höj den vid varje ny version; android/build.ps1 skriver den till version.json och APK:n.
-const APP_VERSION = '1.12.0';
+const APP_VERSION = '1.13.0';
 const UPDATE_URL = 'https://vbridgemountain.github.io/victor/desktop/';
 // Finns bara när sidan körs inne i Android-launchern: brygga till telefonens appar (se android/MainActivity.java)
 // Microsoft-inloggningen (widgeten Microsoft 365 admin) öppnas i ett eget fönster och kommer tillbaka hit med ett svar i adressen.
@@ -1550,6 +1550,38 @@ const TYPES = {
       load(); let n = 0; return () => { if (++n % 300 === 0 && tok()) load(); };   // var femte minut
     } },
 
+  // Egna rekord i spelen: man skriver in sina poäng själv (spelen lämnar inte ut dem). Sparas på enheten.
+  scores: { title: 'Rekord', icon: '🏆', desc: 'Dina egna rekord i spelen',
+    render(w, body) {
+      const d = w.data; state.scores = state.scores || [];
+      const games = [...new Map(state.globes.flatMap(flatApps).filter(a => a.game).map(a => [a.game, a.name])).entries()].sort((a, b) => a[1].localeCompare(b[1], 'sv'));
+      const names = new Map(games); for (const r of state.scores) if (!names.has(r.game)) names.set(r.game, r.gname);
+      const sel = el('select', { class: 'in', 'aria-label': 'Spel', onchange: () => { d.game = sel.value; save(); draw(); } },
+        el('option', { value: '', text: 'Alla spel · bästa per spel' }), [...names].sort((a, b) => a[1].localeCompare(b[1], 'sv')).map(([id, n]) => el('option', { value: id, text: n, selected: d.game === id })));
+      const list = el('div', { style: 'margin-top:8px;max-height:230px;overflow:auto' });
+      const pts = el('input', { class: 'in', type: 'number', inputMode: 'numeric', placeholder: 'Poäng', 'aria-label': 'Poäng', style: 'width:90px' }),
+            who = el('input', { class: 'in', placeholder: 'Namn', 'aria-label': 'Namn', value: state.name || '' });
+      const fmtN = n => Number(n).toLocaleString('sv-SE');
+      function draw() {
+        list.textContent = '';
+        const rows = d.game ? state.scores.filter(r => r.game === d.game).sort((a, b) => b.score - a.score).slice(0, 10)
+          : [...state.scores.reduce((m, r) => (!m.has(r.game) || m.get(r.game).score < r.score ? m.set(r.game, r) : m), new Map()).values()].sort((a, b) => a.gname.localeCompare(b.gname, 'sv'));
+        if (!rows.length) list.append(el('div', { class: 'muted', text: d.game ? 'Inga rekord i det här spelet än.' : 'Inga rekord än. Välj ett spel och skriv in dina poäng, eller tryck 🏆 i spelfönstret.' }));
+        rows.forEach((r, i) => list.append(el('div', { class: 'row', style: 'align-items:center;gap:8px;padding:3px 0;border-bottom:1px solid rgba(var(--rgb),.1)' },
+          el('span', { class: 'mono', style: 'width:22px;color:var(--accent)', text: d.game ? (i + 1) + '.' : '🏆' }),
+          el('span', { class: 'grow', style: 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap', text: d.game ? r.who : r.gname, title: d.game ? new Date(r.at).toLocaleDateString('sv-SE') : r.who }),
+          d.game ? null : el('span', { class: 'muted', style: 'font-size:11px', text: r.who }),
+          el('b', { class: 'mono', text: fmtN(r.score) }),
+          el('button', { class: 'ib', text: '✕', 'aria-label': 'Ta bort rekordet', onclick: () => { if (confirm(`Ta bort ${fmtN(r.score)} poäng (${r.who})?`)) { state.scores = state.scores.filter(x => x !== r); save(); refresh('scores'); } } }))));
+      }
+      body.append(sel, list, el('form', { class: 'row', style: 'margin-top:8px', onsubmit: e => { e.preventDefault();
+          if (!d.game) return toast('REKORD', 'Välj spelet först.');
+          if (pts.value === '' || !isFinite(+pts.value)) return pts.focus();
+          addScore(d.game, names.get(d.game) || d.game, +pts.value, who.value); } },
+        pts, who, el('button', { class: 'btn', text: 'Spara' })));
+      draw();
+    } },
+
   timer: { title: 'Timer', icon: '⏱️', desc: 'Nedräkning med larm',
     render(w, body) {
       const d = w.data; d.min = d.min || 25;
@@ -2262,6 +2294,14 @@ $('#tbHide').onclick = () => { state.taskbar = false; save(); loadTaskbar(); toa
 addEventListener('pointerdown', e => { if (!e.target.closest('#tbMenu,.tbi')) tbMenu.classList.remove('on'); });
 setInterval(loadTaskbar, 2500); document.addEventListener('visibilitychange', loadTaskbar);
 
+// Sparar ett rekord och säger till om det är nytt bästa i spelet
+function addScore(game, gname, score, who) {
+  state.scores = state.scores || []; who = String(who || state.name || 'Jag').trim().slice(0, 30) || 'Jag';
+  const best = Math.max(-Infinity, ...state.scores.filter(r => r.game === game).map(r => r.score));
+  state.scores.push({ id: uid(), game, gname: String(gname).slice(0, 60), score, who, at: Date.now() });
+  save(); refresh('scores');
+  toast('REKORD', score > best ? `Nytt rekord i ${gname}: ${score.toLocaleString('sv-SE')} poäng!` : `${score.toLocaleString('sv-SE')} poäng sparade i ${gname}.`);
+}
 /* ---------- Spel från archive.org: körs i ett eget fönster inne i appen, som ett program ---------- */
 // Archive.org kör spelen i sin egen emulator och tillåter att den visas inuti andra sidor (/embed/). Spelen ligger kvar hos dem.
 const gameWins = new Map(); let gameZ = 20;
@@ -2295,6 +2335,10 @@ function openGame(a) {
   const close = () => { node.remove(); gameWins.delete(id); };
   const head = el('div', { class: 'gwh', title: 'Dra för att flytta. Dra i nedre högra hörnet för att ändra storlek.' },
     el('img', { src: 'https://archive.org/services/img/' + encodeURIComponent(id), alt: '', draggable: false }), el('span', { text: a.name }),
+    el('button', { text: '🏆', title: 'Spara dina poäng', 'aria-label': 'Spara dina poäng', onclick: () => {
+      const v = prompt(`Hur många poäng fick du i ${a.name}?`); if (v == null || v.trim() === '') return;
+      const n = +v.replace(/[\s ]/g, '').replace(',', '.'); if (!isFinite(n)) return toast('REKORD', 'Skriv poängen som ett tal.');
+      addScore(id, a.name, n, state.name); } }),
     el('button', { text: '?', title: 'Visa eller dölj hur man spelar', 'aria-label': 'Hur man spelar', onclick: toggleHelp }),
     el('button', { text: '↻', title: 'Starta om spelet', 'aria-label': 'Starta om spelet', onclick: () => { frame.src = frame.src; } }),
     el('button', { text: '⛶', title: 'Helskärm', 'aria-label': 'Helskärm', onclick: () => (frame.requestFullscreen || frame.webkitRequestFullscreen).call(frame) }),
