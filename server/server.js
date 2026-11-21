@@ -583,6 +583,59 @@ function totpAt(secret, step) { const c = Buffer.alloc(8); c.writeBigUInt64BE(Bi
   return String((h.readUInt32BE(o) & 0x7fffffff) % 1e6).padStart(6, '0'); }
 function totpOk(secret, code) { code = String(code || '').replace(/\D/g, ''); if (code.length !== 6) return false;
   const now = Math.floor(Date.now() / 30000); return [-1, 0, 1].some(d => crypto.timingSafeEqual(Buffer.from(totpAt(secret, now + d)), Buffer.from(code))); }
+// QR-kod (byteläge, felrättning M, version 1–10) som SVG, utan externa paket: för att skanna in tvåstegsnyckeln med mobilen
+function qrMatrix(text, forceMask) {
+  const data = Buffer.from(text, 'utf8'), ECC = [0, 10, 16, 26, 18, 24, 16, 18, 22, 22, 26], NB = [0, 1, 1, 1, 2, 2, 4, 4, 4, 5, 5];
+  const raw = v => { let r = (16 * v + 128) * v + 64; if (v >= 2) { const n = Math.floor(v / 7) + 2; r -= (25 * n - 10) * n - 55; if (v >= 7) r -= 36; } return r; };
+  let ver = 1; for (; ver <= 10; ver++) if (4 + (ver < 10 ? 8 : 16) + data.length * 8 <= (Math.floor(raw(ver) / 8) - ECC[ver] * NB[ver]) * 8) break;
+  if (ver > 10) throw new Error('För lång text för QR-koden.');
+  const cap = Math.floor(raw(ver) / 8) - ECC[ver] * NB[ver], bits = [];
+  const put = (v, n) => { for (let i = n - 1; i >= 0; i--) bits.push((v >>> i) & 1); };
+  put(4, 4); put(data.length, ver < 10 ? 8 : 16); for (const b of data) put(b, 8);
+  put(0, Math.min(4, cap * 8 - bits.length)); put(0, (8 - bits.length % 8) % 8);
+  for (let p = 0xEC; bits.length < cap * 8; p ^= 0xEC ^ 0x11) put(p, 8);
+  const cw = []; for (let i = 0; i < bits.length; i += 8) cw.push(parseInt(bits.slice(i, i + 8).join(''), 2));
+  const mul = (x, y) => { let z = 0; for (let i = 7; i >= 0; i--) { z = (z << 1) ^ ((z >>> 7) * 0x11D); z ^= ((y >>> i) & 1) * x; } return z; };
+  const el = ECC[ver], div = new Array(el).fill(0); div[el - 1] = 1;
+  for (let i = 0, root = 1; i < el; i++, root = mul(root, 2)) for (let j = 0; j < el; j++) { div[j] = mul(div[j], root); if (j + 1 < el) div[j] ^= div[j + 1]; }
+  const rem = d => { const r = new Array(el).fill(0); for (const b of d) { const f = b ^ r.shift(); r.push(0); div.forEach((c, i) => r[i] ^= mul(c, f)); } return r; };
+  const nb = NB[ver], rawCw = Math.floor(raw(ver) / 8), nShort = nb - rawCw % nb, shortLen = Math.floor(rawCw / nb), blocks = [];
+  for (let i = 0, k = 0; i < nb; i++) { const d = cw.slice(k, k + shortLen - el + (i < nShort ? 0 : 1)); k += d.length; const e = rem(d); if (i < nShort) d.push(0); blocks.push(d.concat(e)); }
+  const all = []; for (let i = 0; i < blocks[0].length; i++) blocks.forEach((b, j) => { if (i !== shortLen - el || j >= nShort) all.push(b[i]); });
+  const size = ver * 4 + 17, M = [...Array(size)].map(() => new Array(size).fill(false)), F = [...Array(size)].map(() => new Array(size).fill(false));
+  const set = (x, y, d) => { M[y][x] = d; F[y][x] = true; };
+  for (let i = 0; i < size; i++) { set(6, i, i % 2 === 0); set(i, 6, i % 2 === 0); }
+  for (const [cx, cy] of [[3, 3], [size - 4, 3], [3, size - 4]]) for (let dy = -4; dy <= 4; dy++) for (let dx = -4; dx <= 4; dx++) {
+    const x = cx + dx, y = cy + dy, d = Math.max(Math.abs(dx), Math.abs(dy)); if (x >= 0 && x < size && y >= 0 && y < size) set(x, y, d !== 2 && d !== 4); }
+  if (ver > 1) { const n = Math.floor(ver / 7) + 2, step = Math.ceil((ver * 4 + 4) / (n * 2 - 2)) * 2, pos = [6];
+    for (let p = size - 7; pos.length < n; p -= step) pos.splice(1, 0, p);
+    pos.forEach((a, i) => pos.forEach((b, j) => { if ((i === 0 && j === 0) || (i === 0 && j === n - 1) || (i === n - 1 && j === 0)) return;
+      for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) set(a + dx, b + dy, Math.max(Math.abs(dx), Math.abs(dy)) !== 1); })); }
+  const format = mask => { let r = mask; for (let i = 0; i < 10; i++) r = (r << 1) ^ ((r >>> 9) * 0x537); const b = ((mask << 10) | r) ^ 0x5412, bit = i => ((b >>> i) & 1) === 1;
+    for (let i = 0; i < 6; i++) set(8, i, bit(i)); set(8, 7, bit(6)); set(8, 8, bit(7)); set(7, 8, bit(8)); for (let i = 9; i < 15; i++) set(14 - i, 8, bit(i));
+    for (let i = 0; i < 8; i++) set(size - 1 - i, 8, bit(i)); for (let i = 8; i < 15; i++) set(8, size - 15 + i, bit(i)); set(8, size - 8, true); };
+  format(0);
+  if (ver >= 7) { let r = ver; for (let i = 0; i < 12; i++) r = (r << 1) ^ ((r >>> 11) * 0x1F25); const b = (ver << 12) | r;
+    for (let i = 0; i < 18; i++) { const d = ((b >>> i) & 1) === 1, a = size - 11 + i % 3, c = Math.floor(i / 3); set(a, c, d); set(c, a, d); } }
+  for (let right = size - 1, i = 0; right >= 1; right -= 2) { if (right === 6) right = 5;
+    for (let v = 0; v < size; v++) for (let j = 0; j < 2; j++) { const x = right - j, y = ((right + 1) & 2) === 0 ? size - 1 - v : v;
+      if (!F[y][x] && i < all.length * 8) { M[y][x] = ((all[i >>> 3] >>> (7 - (i & 7))) & 1) === 1; i++; } } }
+  const inv = [(x, y) => (x + y) % 2 === 0, (x, y) => y % 2 === 0, x => x % 3 === 0, (x, y) => (x + y) % 3 === 0, (x, y) => (Math.floor(x / 3) + Math.floor(y / 2)) % 2 === 0,
+    (x, y) => x * y % 2 + x * y % 3 === 0, (x, y) => (x * y % 2 + x * y % 3) % 2 === 0, (x, y) => ((x + y) % 2 + x * y % 3) % 2 === 0];
+  const apply = m => { for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) if (!F[y][x] && inv[m](x, y)) M[y][x] = !M[y][x]; };
+  const penalty = () => { let p = 0, dark = 0;   // förenklad: långa rader, 2×2-block och balans mellan mörkt och ljust
+    for (let a = 0; a < size; a++) for (const hor of [true, false]) { let run = 0, last = null;
+      for (let b = 0; b < size; b++) { const c = hor ? M[a][b] : M[b][a]; if (c === last) { if (++run === 5) p += 3; else if (run > 5) p++; } else { last = c; run = 1; } } }
+    for (let y = 0; y < size - 1; y++) for (let x = 0; x < size - 1; x++) { const c = M[y][x]; if (c === M[y][x + 1] && c === M[y + 1][x] && c === M[y + 1][x + 1]) p += 3; }
+    for (const r of M) for (const c of r) dark += c; return p + Math.floor(Math.abs(dark * 20 - size * size * 10) / (size * size)) * 10; };
+  let best = forceMask, low = Infinity;
+  if (best == null) for (let m = 0; m < 8; m++) { apply(m); format(m); const p = penalty(); if (p < low) { low = p; best = m; } apply(m); }
+  apply(best); format(best); return M;
+}
+function qrSvg(text) { const M = qrMatrix(text), n = M.length, q = 4; let d = '';
+  M.forEach((r, y) => r.forEach((c, x) => { if (c) d += `M${x + q} ${y + q}h1v1h-1z`; }));
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${n + q * 2} ${n + q * 2}" shape-rendering="crispEdges"><rect width="100%" height="100%" fill="#fff"/><path d="${d}" fill="#000"/></svg>`; }
+
 // Stämmer koden om man tillåter en felställd klocka? Ger hur många 30-sekundersteg serverns klocka går fel (inom ±30 minuter), annars null.
 function totpSkew(secret, code) { code = String(code || '').replace(/\D/g, ''); if (code.length !== 6) return null;
   const now = Math.floor(Date.now() / 30000); for (let i = 2; i <= 60; i++) for (const d of [i, -i]) if (totpAt(secret, now + d) === code) return d; return null; }
@@ -776,7 +829,8 @@ async function api(req, res, url) {
   // Nyckeln sparas tills den bekräftats, så att den inte byts ut om man trycker igen eller servern startas om under tiden
   if (p === '/api/2fa/start' && m === 'POST') { const b = await body(req);
     if (!cfg.totpPending || b.fresh) { cfg.totpPending = b32enc(crypto.randomBytes(20)); save(); } const totpPending = cfg.totpPending;
-    return send(res, 200, { serverTime: Date.now(), secret: totpPending, uri: `otpauth://totp/V.I.C.T.O.R.%20Server:${encodeURIComponent(os.hostname())}?secret=${totpPending}&issuer=V.I.C.T.O.R.%20Server` }); }
+    const uri = `otpauth://totp/V.I.C.T.O.R.%20Server:${encodeURIComponent(os.hostname())}?secret=${totpPending}&issuer=V.I.C.T.O.R.%20Server`;
+    return send(res, 200, { serverTime: Date.now(), secret: totpPending, uri, qr: qrSvg(uri) }); }
   if (p === '/api/2fa/enable' && m === 'POST') { const b = await body(req);
     const pend = cfg.totpPending; if (!pend) return send(res, 400, { error: 'Börja om: tryck på "Slå på tvåstegsinloggning" igen.' });
     if (!totpOk(pend, b.code)) { const d = totpSkew(pend, b.code);

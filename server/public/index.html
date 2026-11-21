@@ -481,9 +481,12 @@ async function openSecurity() {
          try { await call('POST', '/api/2fa/disable', { password: pw }); j.totp = false; draw2fa(); } catch (v) { err.textContent = v.message; } } }, 'Stäng av'))]
     : [h('p', null, 'Av. Slå på den innan panelen görs nåbar från internet: då räcker det inte att någon kommer över lösenordet.'),
        h('div', { class: 'row', style: 'margin-top:0' }, h('button', { class: 'btn pri', onclick: async () => { try { const t = await call('POST', '/api/2fa/start'), c = h('input', { class: 'in', inputmode: 'numeric', maxlength: 7, placeholder: '6 siffror' });
-         put(box, h('p', null, 'Lägg till ett konto i en autentiseringsapp (t.ex. Google Authenticator eller Aegis), välj "ange nyckel manuellt" och skriv in:'),
+         const qr = h('img', { alt: 'QR-kod för autentiseringsappen', style: 'display:block;width:220px;max-width:100%;margin:6px 0 4px;border-radius:8px;image-rendering:pixelated' });
+         qr.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(t.qr);
+         put(box, h('p', null, 'Öppna din autentiseringsapp (t.ex. Microsoft Authenticator, Google Authenticator eller Aegis), välj att lägga till ett konto och skanna QR-koden:'), qr,
+           h('p', { class: 'note' }, 'Går det inte att skanna? Välj "ange nyckel manuellt" i appen och skriv in (typ: tidsbaserad):'),
            h('div', { class: 'big', style: 'font-size:15px;letter-spacing:.08em;overflow-wrap:anywhere' }, t.secret.match(/.{1,4}/g).join(' ')),
-           h('p', { class: 'note' }, 'Kontonamn valfritt, typ: tidsbaserad. På telefonen kan du i stället trycka på länken: ', h('a', { href: t.uri, style: 'color:var(--accent)' }, 'öppna i autentiseringsapp')),
+           h('p', { class: 'note' }, 'Är panelen öppen på själva telefonen kan du i stället trycka på länken: ', h('a', { href: t.uri, style: 'color:var(--accent)' }, 'öppna i autentiseringsapp')),
            h('p', { class: 'note' }, 'Serverns klocka: ', h('b', null, new Date(t.serverTime).toLocaleTimeString('sv-SE')), ' · den här enheten: ', new Date().toLocaleTimeString('sv-SE'), '. Skiljer de sig mer än en minut fungerar inte koderna: rätta klockan på serverdatorn först.'),
            h('label', null, 'Skriv koden som appen visar'), c,
            h('div', { class: 'row' }, h('button', { class: 'btn pri', onclick: async () => { err.textContent = ''; try { await call('POST', '/api/2fa/enable', { code: c.value }); j.totp = true; draw2fa(); } catch (v) { err.textContent = v.message; } } }, 'Bekräfta och slå på'))); c.focus();
