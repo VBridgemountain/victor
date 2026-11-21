@@ -58,7 +58,9 @@ De delar utseende men inte kod, och ingen av dem kräver den andra.
 
 **Spel från archive.org:** Glober → **+ Spel från archive.org**. Välj samling (MS-DOS, Windows 3.x, arkad, konsoler, Commodore 64, Apple II), sök eller klistra in en länk från archive.org, och tryck **Spela** eller **Lägg till**. Spelet öppnas i ett eget fönster inne i appen: dra i titelraden för att flytta, i nedre högra hörnet för att ändra storlek, ⛶ för helskärm, — för att minimera. Klicka i spelet innan du spelar, så att tangentbordet styr det. Spelen körs hos Internet Archive och laddas inte ner till datorn eller servern.
 
-**Klassiska spel:** på datorn finns globen "Klassiska spel" med 31 av de mest spelade spelen hos archive.org (MS-DOS, arkad och Windows 3.x). Ta bort spel du inte vill ha som vanliga appar, eller hela globen. **Ladda in klassikerna** (i spelsökningen eller Inställningar → Glober och appar) lägger tillbaka det som saknas och skapar globen igen om den är borttagen.
+**Mappar:** i Glober, tryck **+ Ny mapp** och lägg appar i den med **Flytta till…** på varje rad (eller **Öppna mappen** för att redigera innehållet). I globen klickar du på mappen för att zooma in ett steg till; scrolla ut, tryck Esc eller klicka på globens namn högst upp för att backa.
+
+**Klassiska spel:** på datorn finns mappen **Klassiker** i globen **Spel** med 31 av de mest spelade spelen hos archive.org (MS-DOS, arkad och Windows 3.x). Ta bort spel du inte vill ha, eller hela mappen. **Ladda in klassikerna** (i spelsökningen eller Inställningar → Glober och appar) lägger tillbaka det som saknas och skapar mappen igen om den är borttagen.
 
 **Sortera och flytta appar:** i Glober, dra i ⠿ framför en app för att ändra ordning, eller släpp den på en glob i flikraden för att flytta den dit. Menyn "Flytta till…" på varje rad gör samma sak.
 
@@ -121,6 +123,7 @@ En webbsida kan inte se datorns program. Datorbryggan är ett litet hjälpprogra
 - Klicka på programmet i globen för att starta det.
 - Widgeten **Öppna program** visar öppna fönster.
 - **Förhandsbilder av fönster** (Inställningar → Fönster): varje öppet fönster visas som en ruta med en levande bild, som du kan dra var som helst över skärmarna. Klicka på rutan för att visa fönstret, ✕ stänger det. Välj hur ofta bilderna uppdateras (1–10 sekunder) och storlek, eller stäng av dem om datorn blir seg. Minimerade fönster går inte att fotografera och visar sin senaste bild.
+- **Minimera alla fönster** (▁ i aktivitetsfältet eller Inställningar → Fönster): lägger undan alla fönster utom V.I.C.T.O.R. Tryck igen (▣) för att visa samma fönster igen.
 - **Ordna fönster** (▦ i aktivitetsfältet eller Inställningar → Fönster): välj skärm och plats (hela, halvor, hörn eller tredjedelar) per program. **Ordna nu** flyttar de öppna fönstren dit, och **Ordna automatiskt** gör det när programmet öppnas.
 - **Aktivitetsfältet** längst ner visar alla öppna fönster, som Windows aktivitetsfält. Klicka för att visa ett fönster, ✕ (eller högerklick) för att stänga det, som att trycka på dess eget kryss. Flera fönster från samma program samlas, och ett klick visar en lista att välja i. Dölj fältet med ✕ längst till höger; visa det igen under Inställningar → Datorbrygga.
 

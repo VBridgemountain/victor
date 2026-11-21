@@ -1,10 +1,12 @@
 {
-    "version":  "1.9.0",
+    "version":  "1.10.0",
     "date":  "2026-11-21",
     "notes":  [
-                  "Ny glob \"Klassiska spel\" med 31 av de mest spelade spelen genom tiderna: Prince of Persia, Wolfenstein 3D, Doom II, SimCity, Pac-Man, Out Run, Q*Bert, Minesweeper med flera",
-                  "Ta bort de spel du inte vill ha; Ladda in klassikerna lägger tillbaka dem (i spelsökningen och i Inställningar)",
-                  "Tas hela globen bort kommer den inte tillbaka av sig själv"
+                  "Minimera alla fönster utom V.I.C.T.O.R. med knappen ▁ i aktivitetsfältet eller i Inställningar → Fönster; tryck igen för att visa dem",
+                  "Mappar i globerna: + Ny mapp i Glober, och Flytta till… lägger appar i en mapp",
+                  "Klicka på en mapp för att zooma in ett steg till; scrolla ut eller Esc för att backa",
+                  "Klassikerna ligger nu i mappen Klassiker i globen Spel i stället för en egen glob",
+                  "Kräver den nya datorbryggan för Minimera alla"
               ],
     "apk":  "https://vbridgemountain.github.io/victor/desktop/victor.apk"
 }

@@ -76,13 +76,15 @@ public static class VWin {
       int n = GetWindowTextLength(h); if (n == 0) return true;
       var t = new StringBuilder(n + 1); GetWindowText(h, t, n + 1);
       uint pid; GetWindowThreadProcessId(h, out pid);
-      sb.Append(h.ToInt64()).Append('\\t').Append(pid).Append('\\t').Append(h == fg ? 1 : 0).Append('\\t').Append(t.ToString().Replace('\\t', ' ').Replace('\\r', ' ').Replace('\\n', ' ')).Append('\\n');
+      sb.Append(h.ToInt64()).Append('\\t').Append(pid).Append('\\t').Append(h == fg ? 1 : 0).Append('\\t').Append(IsIconic(h) ? 1 : 0).Append('\\t').Append(t.ToString().Replace('\\t', ' ').Replace('\\r', ' ').Replace('\\n', ' ')).Append('\\n');
       return true; }, IntPtr.Zero);
     return sb.ToString();
   }
   public static bool Focus(long hw) { var h = new IntPtr(hw); if (IsIconic(h)) ShowWindowAsync(h, 9);
     keybd_event(0x12, 0, 0, UIntPtr.Zero); keybd_event(0x12, 0, 2, UIntPtr.Zero);   // Alt-tryck: låter fönstret ta fokus från bakgrunden
     return SetForegroundWindow(h); }
+  public static void Min(long hw) { ShowWindowAsync(new IntPtr(hw), 7); }       // minimera utan att flytta fokus
+  public static void Restore(long hw) { ShowWindowAsync(new IntPtr(hw), 9); }
   public static bool Close(long hw) { return PostMessage(new IntPtr(hw), 0x10, IntPtr.Zero, IntPtr.Zero); }   // WM_CLOSE: som att trycka på krysset
 
   // ---- skärmar, placering och förhandsbilder (i riktiga bildpunkter, oberoende av skalning per skärm)
@@ -179,10 +181,10 @@ async function loadWindows() {
     let j = {}; try { j = JSON.parse(out); } catch { }
     const procs = j.p || {}, list = [];
     for (const line of String(j.w || '').split('\n')) {
-      const [hwnd, pid, fg, ...t] = line.split('\t'), title = t.join(' ').trim(), pr = procs[pid] || {};
+      const [hwnd, pid, fg, mn, ...t] = line.split('\t'), title = t.join(' ').trim(), pr = procs[pid] || {};
       if (!hwnd || !title || title === 'Program Manager' || /^(TextInputHost|ShellExperienceHost|SearchHost|StartMenuExperienceHost)$/i.test(pr.n || '')) continue;
       const uwp = /^ApplicationFrameHost$/i.test(pr.n || '');   // appar från Microsoft Store visas genom ApplicationFrameHost: använd titeln som namn
-      list.push({ hwnd: +hwnd, pid: +pid, fg: fg === '1', title, name: uwp ? title : (pr.n || 'okänt'), mem: pr.m || 0, icon: uwp ? '' : (pr.p || '') });
+      list.push({ hwnd: +hwnd, pid: +pid, fg: fg === '1', min: mn === '1', title, name: uwp ? title : (pr.n || 'okänt'), mem: pr.m || 0, icon: uwp ? '' : (pr.p || '') });
     }
     wins = { list, at: Date.now(), busy: null };
     makeIcons(list.map(p => p.icon).filter(Boolean));
@@ -289,6 +291,13 @@ http.createServer(async (req, res) => {
         await psRun(`[void][VWin]::Place(${w.hwnd}, ${x}, ${y}, ${ww}, ${hh})`, 8000); placed++;
       }
       return send(res, 200, { ok: true, placed });
+    }
+    if (p === '/api/minimize') {   // minimera alla fönster utom de vars titel börjar med "keep" (appen själv), eller visa dem igen
+      wins.at = 0; const list = await loadWindows(), keep = String(b.keep || '').slice(0, 200);
+      const pick = Array.isArray(b.restore) ? list.filter(w => b.restore.map(Number).includes(w.hwnd) && w.min)
+                                            : list.filter(w => !w.min && !(keep && w.title.startsWith(keep)));
+      if (pick.length) await psRun(pick.map(w => `[VWin]::${b.restore ? 'Restore' : 'Min'}(${w.hwnd})`).join('; '), 10000);
+      wins.at = 0; return send(res, 200, { ok: true, hwnds: pick.map(w => w.hwnd) });
     }
     if (p === '/api/focus' || p === '/api/close') {   // visa eller stäng ett fönster som finns i listan (inga andra)
       wins.at = 0; const list = await loadWindows(), w = list.find(x => (b.hwnd ? x.hwnd === +b.hwnd : x.pid === (+b.pid | 0)));
