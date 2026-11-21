@@ -1,9 +1,10 @@
 {
-    "version":  "1.10.2",
+    "version":  "1.11.0",
     "date":  "2026-11-21",
     "notes":  [
-                  "Spelen använder nu archive.org:s egen spelare, med deras knappar för ljud av/på och helskärm",
-                  "Samma spelare både inne i appen och i eget fönster (⧉)"
+                  "Spelfönstret visar hur man spelar: kontrollerna för alla 31 klassiker, och allmänna tips för övriga spel (knappen ?)",
+                  "Ny knapp ↻ som startar om spelet, till exempel när man dött",
+                  "Prince of Persia: efter att du dött, tryck Skift för att fortsätta eller Ctrl+A för att börja om banan"
               ],
     "apk":  "https://vbridgemountain.github.io/victor/desktop/victor.apk"
 }

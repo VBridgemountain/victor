@@ -146,6 +146,9 @@ body.tb #taskbar{display:flex} body.tb #readout{bottom:72px} body.tb #ideaBar{bo
 .arr{display:grid;grid-template-columns:1fr 110px 170px;gap:7px;align-items:center;margin-bottom:6px} .arr span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .gw{position:fixed;z-index:15;display:flex;flex-direction:column;background:#000;border:1px solid var(--accent);box-shadow:0 10px 40px rgba(0,0,0,.7),0 0 24px rgba(var(--rgb),.25);
   overflow:hidden;max-width:100vw;max-height:100vh}
+.gwhelp{padding:8px 12px;background:#0a1620;border-bottom:1px solid var(--line);font-size:12.5px;line-height:1.5;color:var(--text);flex:none;max-height:170px;overflow:auto}
+.gwhelp b{color:var(--accent)} .gwhelp kbd{font:11px var(--mono);border:1px solid var(--line);padding:0 4px;margin:0 1px;background:rgba(var(--rgb),.08)}
+.gwhelp p{margin:3px 0} .gwhelp .note{color:var(--dim);font-size:11.5px}
 .gwv{position:relative;width:1000px;height:429px;overflow:hidden;flex:none;background:#000}
 .gwv iframe{position:absolute;left:0;top:-83px;width:1000px;height:512px;border:0}
 .gw.min{resize:none;height:auto!important;min-height:0} .gw.min iframe{display:none}
@@ -416,7 +419,7 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
    ===================================================================== */
 const KEY = 'jarvis-desktop-v1';
 // Den här versionen av appen. Höj den vid varje ny version; android/build.ps1 skriver den till version.json och APK:n.
-const APP_VERSION = '1.10.2';
+const APP_VERSION = '1.11.0';
 const UPDATE_URL = 'https://vbridgemountain.github.io/victor/desktop/';
 // Finns bara när sidan körs inne i Android-launchern: brygga till telefonens appar (se android/MainActivity.java)
 // Microsoft-inloggningen (widgeten Microsoft 365 admin) öppnas i ett eget fönster och kommer tillbaka hit med ett svar i adressen.
@@ -2281,19 +2284,26 @@ function openGame(a) {
   const frame = el('iframe', { src: 'https://archive.org/details/' + encodeURIComponent(id), title: a.name, scrolling: 'no', allow: 'fullscreen; gamepad; autoplay; pointer-lock', allowFullscreen: true,
     onload: () => { try { frame.focus(); } catch { } } });
   frame.setAttribute('tabindex', '0');
+  state.gameHelp = state.gameHelp || {};
+  const help = el('div', { class: 'gwhelp', hidden: !!state.gameHelp[id] });
+  help.innerHTML = '<p><b>Så spelar du:</b> ' + helpHtml(helpFor(id)) + '</p><p class="note">' + helpHtml(HELP_ALL) + '</p>';
+  const fit = () => { node.style.height = (429 + 34 + (help.hidden ? 0 : help.offsetHeight) + (tip && tip.isConnected ? tip.offsetHeight : 0)) + 'px'; };
+  const toggleHelp = () => { help.hidden = !help.hidden; state.gameHelp[id] = help.hidden; save(); fit(); };
   const tip = state.gameTipSeen ? null : el('div', { class: 'gwt' },
-    el('span', { text: 'Tryck på startknappen i bilden. Klicka sedan i spelet så att tangentbord och mus styr det. Högtalaren till höger slår på och av ljudet, pilarna ovanför ger helskärm.' }),
-    el('button', { text: 'Uppfattat', onclick: e => { state.gameTipSeen = true; save(); e.target.parentNode.remove(); } }));
+    el('span', { text: 'Tryck på startknappen i bilden och klicka sedan i spelet. Högtalaren till höger slår på och av ljudet, pilarna ovanför ger helskärm. ? visar hur man spelar, ↻ startar om spelet.' }),
+    el('button', { text: 'Uppfattat', onclick: e => { state.gameTipSeen = true; save(); e.target.parentNode.remove(); fit(); } }));
   const close = () => { node.remove(); gameWins.delete(id); };
   const head = el('div', { class: 'gwh', title: 'Dra för att flytta. Dra i nedre högra hörnet för att ändra storlek.' },
     el('img', { src: 'https://archive.org/services/img/' + encodeURIComponent(id), alt: '', draggable: false }), el('span', { text: a.name }),
+    el('button', { text: '?', title: 'Visa eller dölj hur man spelar', 'aria-label': 'Hur man spelar', onclick: toggleHelp }),
+    el('button', { text: '↻', title: 'Starta om spelet', 'aria-label': 'Starta om spelet', onclick: () => { frame.src = frame.src; } }),
     el('button', { text: '⛶', title: 'Helskärm', 'aria-label': 'Helskärm', onclick: () => (frame.requestFullscreen || frame.webkitRequestFullscreen).call(frame) }),
     el('button', { text: '—', title: 'Minimera', 'aria-label': 'Minimera', onclick: () => node.classList.toggle('min') }),
     el('button', { text: '⧉', title: 'Spela i ett eget fönster', 'aria-label': 'Spela i ett eget fönster', onclick: () => { if (popGame(a)) close(); } }),
     el('button', { text: '↗', title: 'Öppna spelets sida på archive.org (med instruktioner och kontroller)', 'aria-label': 'Öppna på archive.org', onclick: () => openUrl('https://archive.org/details/' + id) }),
     el('button', { class: 'gx', text: '✕', title: 'Stäng spelet', 'aria-label': 'Stäng spelet', onclick: close }));
   const node = el('section', { class: 'gw', role: 'dialog', 'aria-label': a.name,
-    style: `left:${Math.max(0, (innerWidth - w) / 2 + n * 28)}px;top:${Math.max(0, (innerHeight - h) / 2 + n * 28)}px;width:${w}px;height:${h}px;z-index:${++gameZ}` }, head, tip, el('div', { class: 'gwv' }, frame));
+    style: `left:${Math.max(0, (innerWidth - w) / 2 + n * 28)}px;top:${Math.max(0, (innerHeight - h) / 2 + n * 28)}px;width:${w}px;height:${h}px;z-index:${++gameZ}` }, head, tip, help, el('div', { class: 'gwv' }, frame));
   node.addEventListener('pointerdown', () => node.style.zIndex = ++gameZ);
   node.addEventListener('pointerup', e => { if (!e.target.closest('button')) try { frame.focus(); } catch { } });   // tillbaka till spelet efter klick på ramen
   head.addEventListener('pointerdown', e => {
@@ -2303,7 +2313,7 @@ function openGame(a) {
     const up = () => { head.removeEventListener('pointermove', mv); head.removeEventListener('pointerup', up); frame.style.pointerEvents = ''; };
     head.addEventListener('pointermove', mv); head.addEventListener('pointerup', up);
   });
-  document.body.append(node); gameWins.set(id, node);
+  document.body.append(node); gameWins.set(id, node); fit();
 }
 // Klassikerna: de mest spelade spelen i archive.org:s egna samlingar (MS-DOS, Internet Arcade, Windows 3.x)
 const GAME_PACK = [['msdos_Oregon_Trail_The_1990', 'The Oregon Trail'], ['msdos_Prince_of_Persia_1990', 'Prince of Persia'], ['msdos_Wolfenstein_3D_1992', 'Wolfenstein 3D'],
@@ -2337,6 +2347,49 @@ function migrateGamePack() {
   r.folder.apps = r.folder.apps.filter(a => old.apps.some(o => o.game === a.game) || !GAME_PACK.some(([id]) => id === a.game));   // spel man tagit bort förblir borttagna
   for (const a of old.apps) if (!a.game || !have.has(a.game)) r.folder.apps.push(a);   // egna tillägg följer med
   state.globes.splice(i, 1); state.active = clamp(state.active > i ? state.active - 1 : state.active, 0, state.globes.length - 1); save(); buildScene();
+}
+// Hur man spelar. [tangent] blir en tangentknapp i rutan. Spel som saknas här får en allmän beskrivning efter sin typ.
+const GAME_HELP = {
+  msdos_Oregon_Trail_The_1990: 'Välj i menyerna med [siffror] och [Enter]. [Mellanslag] fortsätter när spelet ber om det. På jakt: [piltangenterna] vänder jägaren, [Mellanslag] skjuter.',
+  msdos_Prince_of_Persia_1990: '[←][→] springer. [↑] hoppar uppåt eller klättrar, [↑] medan du springer hoppar långt. [↓] hukar och klättrar ner. [Skift] tar ett försiktigt steg, greppar kanter, plockar upp och dricker. I strid: [Skift] hugger, [↑] parerar. [Esc] pausar. Efter att du dött: tryck [Skift] för att fortsätta, eller [Ctrl]+[A] för att börja om banan.',
+  msdos_Wolfenstein_3D_1992: '[Piltangenterna] går och vänder. [Ctrl] skjuter, [Mellanslag] öppnar dörrar, [Skift] springer, [Alt] + [←][→] går i sidled. [1]–[4] byter vapen. [Esc] öppnar menyn.',
+  'Doom-2': '[Piltangenterna] går och vänder. [Ctrl] skjuter, [Mellanslag] öppnar dörrar och trycker på knappar, [Skift] springer, [Alt] + [←][→] går i sidled. [1]–[7] byter vapen, [Tab] visar kartan, [Esc] öppnar menyn.',
+  'msdos_Pac-Man_1983': '[Piltangenterna] styr Pac-Man. Ät alla prickar och undvik spökena; de stora prickarna gör spökena ätbara en stund.',
+  msdos_SimCity_1989: 'Spelas med musen: välj ett verktyg (väg, el, bostäder, industri …) och klicka på kartan. Klicka i spelet så fångas musen, [Esc] släpper den.',
+  msdos_Disneys_Aladdin_1994: '[Piltangenterna] springer, klättrar och hukar. Hoppa, svinga svärdet och kasta äpplen med tangenterna som visas under spelets inställningar.',
+  msdos_Prehistorik_2_1993: '[←][→] springer, [↑] hoppar, [↓] hukar. Slå med vapnet med [Mellanslag] eller den tangent spelet visar.',
+  msdos_Stunts_1990: '[↑] gasar, [↓] bromsar och backar, [←][→] styr. [Esc] pausar och öppnar menyn.',
+  msdos_Where_in_the_World_is_Carmen_Sandiego_Enhanced_1989: 'Välj i menyerna med tangentbordet och skriv svaren när spelet frågar. Följ ledtrådarna mellan städer och utfärda en arresteringsorder innan tiden tar slut.',
+  'msdos_Dune_2_-_The_Building_of_a_Dynasty_1992': 'Spelas med musen: klicka på en byggnad eller enhet, välj kommando till höger och klicka på kartan. Klicka i spelet så fångas musen, [Esc] släpper den.',
+  msdos_Scorched_Earth_1991: '[←][→] ändrar kanonens vinkel, [↑][↓] ändrar kraften, [Mellanslag] skjuter, [Tab] byter vapen.',
+  msdos_Golden_Axe_1990: '[Piltangenterna] rör din krigare. Attack, hopp och magi ligger på tangenterna som visas i spelets meny.',
+  msdos_Mario_Brothers_VGA_1990: '[←][→] springer och [↑] eller [Mellanslag] hoppar. Slå upp golvet under fienderna och sparka bort dem.',
+  msdos_Master_of_Orion_1993: 'Spelas med musen: klicka på stjärnsystem, planeter och knapparna längs kanten. Klicka i spelet så fångas musen, [Esc] släpper den.',
+  msdos_Indiana_Jones_and_The_Last_Crusade_1989: 'Äventyrsspel med musen: välj ett verb (gå, ta, använd, prata …) och klicka på det du vill använda det på. Klicka i spelet så fångas musen, [Esc] släpper den.',
+  arcade_outrun: '[5] lägger i ett mynt, [1] startar. [←][→] styr, [Ctrl] gasar, [Alt] bromsar, [Mellanslag] växlar.',
+  arcade_qbert: '[5] lägger i ett mynt, [1] startar. [Piltangenterna] hoppar diagonalt mellan kuberna. Ändra färg på alla rutor och undvik fienderna.',
+  arcade_paperboy: '[5] lägger i ett mynt, [1] startar. [Piltangenterna] styr cykeln, [Ctrl] kastar tidningar.',
+  arcade_joust: '[5] lägger i ett mynt, [1] startar. [←][→] styr, [Ctrl] flaxar med vingarna. Träffa motståndarna ovanifrån.',
+  arcade_digdug: '[5] lägger i ett mynt, [1] startar. [Piltangenterna] gräver, [Ctrl] pumpar upp fienderna.',
+  arcade_defender: '[5] lägger i ett mynt, [1] startar. [↑][↓] styr, [Ctrl] skjuter, [Alt] gasar, [Mellanslag] vänder skeppet. Rädda människorna från landarna.',
+  arcade_tron: '[5] lägger i ett mynt, [1] startar. [Piltangenterna] styr, [Ctrl] skjuter.',
+  arcade_marble: '[5] lägger i ett mynt, [1] startar. Styr kulan med [piltangenterna] (eller musen) genom banan innan tiden tar slut.',
+  arcade_mrdo: '[5] lägger i ett mynt, [1] startar. [Piltangenterna] gräver, [Ctrl] kastar kraftbollen.',
+  'chips_challenge_windows_3.x': '[Piltangenterna] flyttar Chip. Samla alla chips och nå utgången. Menyerna längst upp öppnas med musen.',
+  win3_PipeDr3x: 'Spelas med musen: klicka för att lägga ut rörbitar innan vattnet börjar rinna. Bygg en så lång ledning som möjligt.',
+  win3_JezzBall: 'Spelas med musen: vänsterklicka för att bygga en vägg, högerklicka för att byta mellan vågrät och lodrät. Stäng in bollarna tills 75 % av planen är täckt.',
+  rodents_revenge: '[Piltangenterna] flyttar musen. Knuffa block så att katterna stängs in och blir till ost.',
+  win3_Mineswee: 'Spelas med musen: vänsterklicka för att öppna en ruta, högerklicka för att sätta en flagga där du tror att en mina ligger. Siffrorna visar hur många minor som gränsar till rutan.',
+  win3_WINSKI: 'Styr åkaren med musen åt det håll du vill åka. [F] åker snabbare. Akta dig för träden och för det som jagar dig efter målet.'
+};
+// Allmänt för alla spel, och beskrivning efter typ för spel som saknas ovan
+const HELP_ALL = 'Klicka i spelet så att tangentbordet och musen styr det; [Esc] släpper musen. Undvik [Ctrl]+[R] och [Ctrl]+[W]: det är webbläsarens genvägar för att ladda om och stänga.';
+const helpFor = id => GAME_HELP[id] || (/^arcade_/.test(id) ? '[5] lägger i ett mynt, [1] startar. [Piltangenterna] styr, [Ctrl] är knapp 1, [Alt] knapp 2 och [Mellanslag] knapp 3.'
+  : /^win3|_win/i.test(id) ? 'Windows 3.x-spel styrs mest med musen. Klicka i spelet så fångas musen.'
+  : 'De flesta DOS-spel styrs med [piltangenterna], [Mellanslag], [Ctrl] och [Enter]. Spelets egen meny eller sida på archive.org (↗) visar exakt vilka tangenter som gäller.');
+function helpHtml(text) {   // [tangent] → tangentknapp; texten är vår egen, men escapas ändå
+  const esc = t => t.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  return esc(text).replace(/\[([^\]]{1,20})\]/g, '<kbd>$1</kbd>');
 }
 const GAME_COLLS = [['softwarelibrary_msdos_games', 'MS-DOS'], ['softwarelibrary_win3_games', 'Windows 3.x'], ['internetarcade', 'Arkadspel'], ['consolelivingroom', 'Konsoler'],
   ['softwarelibrary_c64_games', 'Commodore 64'], ['softwarelibrary_apple_games', 'Apple II']];
