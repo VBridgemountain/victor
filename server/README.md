@@ -61,8 +61,10 @@ köra i en webbläsare.
 
 Slå först på tvåstegsinloggning under Inställningar → Säkerhet och fjärråtkomst. Välj sedan en väg in:
 
-- **Tailscale (enklast, säkrast):** installera Tailscale på servern och på telefon/dator. Panelen nås på serverns
-  Tailscale-adress, port 8787, utan att något öppnas mot internet.
+- **Cloudflare Tunnel (rekommenderas, används för shadowframe.studio):** https-adress som fungerar i vilken webbläsare som
+  helst, utan att öppna portar i routern. Lägg Cloudflare Access framför panelen. Se INFO.md.
+- **Tailscale (alternativ utan domän):** VPN-app på servern och på varje enhet. Panelen nås på serverns
+  Tailscale-adress, port 8787.
 - **Cloudflare Tunnel (vanlig https-adress):** kräver en domän hos Cloudflare. Peka en adress mot `http://localhost:8787`
   och en andra mot `http://localhost:8788`, och ange den andra som "Spelhallens egen https-adress" i panelen.
 - **Egen HTTPS i programmet:** lägg `cert.pem` och `key.pem` i `data/tls` och starta om. Då krävs portöppning i routern.

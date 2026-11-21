@@ -583,7 +583,11 @@ function totpAt(secret, step) { const c = Buffer.alloc(8); c.writeBigUInt64BE(Bi
   return String((h.readUInt32BE(o) & 0x7fffffff) % 1e6).padStart(6, '0'); }
 function totpOk(secret, code) { code = String(code || '').replace(/\D/g, ''); if (code.length !== 6) return false;
   const now = Math.floor(Date.now() / 30000); return [-1, 0, 1].some(d => crypto.timingSafeEqual(Buffer.from(totpAt(secret, now + d)), Buffer.from(code))); }
-let totpPending = null;
+// Stämmer koden om man tillåter en felställd klocka? Ger hur många 30-sekundersteg serverns klocka går fel (inom ±30 minuter), annars null.
+function totpSkew(secret, code) { code = String(code || '').replace(/\D/g, ''); if (code.length !== 6) return null;
+  const now = Math.floor(Date.now() / 30000); for (let i = 2; i <= 60; i++) for (const d of [i, -i]) if (totpAt(secret, now + d) === code) return d; return null; }
+const skewMsg = d => `Koden stämmer, men klockan i serverdatorn går ungefär ${Math.round(Math.abs(d) / 2)} minuter ${d > 0 ? 'efter' : 'före'}. `
+  + 'Rätta klockan på serverdatorn (Inställningar → Tid och språk → Datum och tid → Synkronisera nu) och försök igen.';
 
 // ------------------------------------------------------------------ spelhallen: egna spelfiler som spelas i webbläsaren
 // Emulatorn (EmulatorJS) körs i en egen webbadress (porten efter panelens), skild från panelen, så att emulatorns kod
@@ -757,8 +761,10 @@ async function api(req, res, url) {
     const ip = clientIp(req), wait = locked(ip);
     if (wait) return send(res, 429, { error: `För många försök. Vänta ${wait > 90 ? Math.ceil(wait / 60) + ' minuter' : wait + ' sekunder'}.` });
     const b = await body(req);
-    if (!checkPw(b.password || '') || (cfg.totp && !totpOk(cfg.totp, b.code))) { failed(ip); logAccess(req, 'misslyckad inloggning');
-      return send(res, 401, { error: cfg.totp ? 'Fel lösenord eller kod.' : 'Fel lösenord.' }); }
+    const pwOk = checkPw(b.password || '');
+    if (!pwOk || (cfg.totp && !totpOk(cfg.totp, b.code))) { failed(ip); logAccess(req, 'misslyckad inloggning');
+      const d = pwOk && cfg.totp ? totpSkew(cfg.totp, b.code) : null;
+      return send(res, 401, { error: d !== null ? skewMsg(d) : cfg.totp ? 'Fel lösenord eller kod.' : 'Fel lösenord.' }); }
     tries.delete(ip); logAccess(req, 'inloggad'); newSession(req, res); return send(res, 200, { ok: true });
   }
   if (!authed(req)) return send(res, 401, { error: 'Inte inloggad.' });
@@ -767,11 +773,15 @@ async function api(req, res, url) {
   if (p === '/api/readkey' && m === 'POST') { const b = await body(req);
     if (b.action === 'off') delete cfg.readKey; else cfg.readKey = crypto.randomBytes(24).toString('base64url');
     save(); logAccess(req, b.action === 'off' ? 'läsnyckel borttagen' : 'ny läsnyckel'); return send(res, 200, { readKey: cfg.readKey || '' }); }
-  if (p === '/api/2fa/start' && m === 'POST') { totpPending = b32enc(crypto.randomBytes(20));
-    return send(res, 200, { secret: totpPending, uri: `otpauth://totp/V.I.C.T.O.R.%20Server:${encodeURIComponent(os.hostname())}?secret=${totpPending}&issuer=V.I.C.T.O.R.%20Server` }); }
+  // Nyckeln sparas tills den bekräftats, så att den inte byts ut om man trycker igen eller servern startas om under tiden
+  if (p === '/api/2fa/start' && m === 'POST') { const b = await body(req);
+    if (!cfg.totpPending || b.fresh) { cfg.totpPending = b32enc(crypto.randomBytes(20)); save(); } const totpPending = cfg.totpPending;
+    return send(res, 200, { serverTime: Date.now(), secret: totpPending, uri: `otpauth://totp/V.I.C.T.O.R.%20Server:${encodeURIComponent(os.hostname())}?secret=${totpPending}&issuer=V.I.C.T.O.R.%20Server` }); }
   if (p === '/api/2fa/enable' && m === 'POST') { const b = await body(req);
-    if (!totpPending || !totpOk(totpPending, b.code)) return send(res, 400, { error: 'Koden stämmer inte. Kontrollera att klockan i telefonen går rätt och försök igen.' });
-    cfg.totp = totpPending; totpPending = null; save(); logAccess(req, 'tvåstegsinloggning påslagen'); return send(res, 200, { ok: true }); }
+    const pend = cfg.totpPending; if (!pend) return send(res, 400, { error: 'Börja om: tryck på "Slå på tvåstegsinloggning" igen.' });
+    if (!totpOk(pend, b.code)) { const d = totpSkew(pend, b.code);
+      return send(res, 400, { error: d !== null ? skewMsg(d) : 'Koden stämmer inte. Kontrollera att kontot i appen har nyckeln som visas här (lägg till det på nytt om du tryckt på knappen flera gånger) och att klockan i telefonen går rätt.' }); }
+    cfg.totp = pend; delete cfg.totpPending; save(); logAccess(req, 'tvåstegsinloggning påslagen'); return send(res, 200, { ok: true }); }
   if (p === '/api/2fa/disable' && m === 'POST') { const b = await body(req);
     if (!checkPw(b.password || '')) return send(res, 401, { error: 'Fel lösenord.' });
     delete cfg.totp; save(); logAccess(req, 'tvåstegsinloggning avstängd'); return send(res, 200, { ok: true }); }

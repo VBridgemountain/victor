@@ -484,6 +484,7 @@ async function openSecurity() {
          put(box, h('p', null, 'Lägg till ett konto i en autentiseringsapp (t.ex. Google Authenticator eller Aegis), välj "ange nyckel manuellt" och skriv in:'),
            h('div', { class: 'big', style: 'font-size:15px;letter-spacing:.08em;overflow-wrap:anywhere' }, t.secret.match(/.{1,4}/g).join(' ')),
            h('p', { class: 'note' }, 'Kontonamn valfritt, typ: tidsbaserad. På telefonen kan du i stället trycka på länken: ', h('a', { href: t.uri, style: 'color:var(--accent)' }, 'öppna i autentiseringsapp')),
+           h('p', { class: 'note' }, 'Serverns klocka: ', h('b', null, new Date(t.serverTime).toLocaleTimeString('sv-SE')), ' · den här enheten: ', new Date().toLocaleTimeString('sv-SE'), '. Skiljer de sig mer än en minut fungerar inte koderna: rätta klockan på serverdatorn först.'),
            h('label', null, 'Skriv koden som appen visar'), c,
            h('div', { class: 'row' }, h('button', { class: 'btn pri', onclick: async () => { err.textContent = ''; try { await call('POST', '/api/2fa/enable', { code: c.value }); j.totp = true; draw2fa(); } catch (v) { err.textContent = v.message; } } }, 'Bekräfta och slå på'))); c.focus();
        } catch (v) { err.textContent = v.message; } } }, 'Slå på tvåstegsinloggning'))]);
@@ -502,8 +503,9 @@ async function openSecurity() {
     !j.https && h('p', { class: 'note' }, 'Över okrypterad HTTP ska panelen bara användas i hemnätet eller över VPN. Öppna inte porten direkt i routern.'),
     h('label', null, 'Tvåstegsinloggning'), box,
     h('label', null, 'Nå servern utifrån'),
-    h('p', { class: 'note' }, 'Enklast och säkrast är Tailscale: installera det på servern och på din telefon/dator, så når du panelen på serverns Tailscale-adress var du än är, utan att något öppnas mot internet. ',
-      'Vill du ha en vanlig https-adress (t.ex. server.dindomän.se) fungerar Cloudflare Tunnel: peka en adress mot http://localhost:8787 och en till mot spelhallens port, och ange den senare här nedanför. ',
+    h('p', { class: 'note' }, j.viaProxy && j.https ? 'Du är inne via en tunnel (t.ex. Cloudflare Tunnel) med HTTPS, så fjärråtkomsten är redan klar. ' : '',
+      'Med Cloudflare Tunnel får servern en vanlig https-adress (t.ex. server.dindomän.se) som fungerar från vilken webbläsare som helst: peka en adress mot http://localhost:8787 och en till mot spelhallens port, och ange den senare här nedanför. Lägg gärna Cloudflare Access framför panelen. ',
+      'Alternativ utan egen domän: Tailscale, en VPN-app på servern och på varje enhet du ansluter från. ',
       'Egen HTTPS direkt i programmet: lägg cert.pem och key.pem i mappen data/tls och starta om.'),
     h('label', null, 'Spelhallens egen https-adress (bara vid tunnel)'), arc,
     h('label', null, 'Läsnyckel för widgeten i V.I.C.T.O.R.'), keyBox,
