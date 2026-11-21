@@ -50,7 +50,7 @@ async function loadApps() {
 // Öppna fönster, som Windows aktivitetsfält visar dem: synliga, egna (inte verktygsfönster) och inte dolda.
 // En PowerShell hålls igång i bakgrunden så att listan kan läsas ofta utan att starta ett nytt program varje gång.
 const WIN_CS = `
-using System; using System.Text; using System.Runtime.InteropServices;
+using System; using System.Text; using System.Runtime.InteropServices; using System.Drawing; using System.Drawing.Imaging; using System.Collections.Generic;
 public static class VWin {
   delegate bool EnumProc(IntPtr h, IntPtr l);
   [DllImport("user32.dll")] static extern bool EnumWindows(EnumProc f, IntPtr l);
@@ -84,6 +84,57 @@ public static class VWin {
     keybd_event(0x12, 0, 0, UIntPtr.Zero); keybd_event(0x12, 0, 2, UIntPtr.Zero);   // Alt-tryck: låter fönstret ta fokus från bakgrunden
     return SetForegroundWindow(h); }
   public static bool Close(long hw) { return PostMessage(new IntPtr(hw), 0x10, IntPtr.Zero, IntPtr.Zero); }   // WM_CLOSE: som att trycka på krysset
+
+  // ---- skärmar, placering och förhandsbilder (i riktiga bildpunkter, oberoende av skalning per skärm)
+  [StructLayout(LayoutKind.Sequential)] public struct RECT { public int L, T, R, B; }
+  [StructLayout(LayoutKind.Sequential)] struct MONINFO { public int cb; public RECT mon, work; public uint flags; }
+  delegate bool MonProc(IntPtr m, IntPtr dc, ref RECT r, IntPtr d);
+  [DllImport("user32.dll")] static extern bool EnumDisplayMonitors(IntPtr dc, IntPtr clip, MonProc f, IntPtr d);
+  [DllImport("user32.dll")] static extern bool GetMonitorInfo(IntPtr m, ref MONINFO i);
+  [DllImport("user32.dll")] static extern IntPtr SetThreadDpiAwarenessContext(IntPtr c);
+  [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr h, out RECT r);
+  [DllImport("dwmapi.dll")] static extern int DwmGetWindowAttribute(IntPtr h, int a, out RECT v, int s);
+  [DllImport("user32.dll")] static extern bool IsZoomed(IntPtr h);
+  [DllImport("user32.dll")] static extern bool ShowWindow(IntPtr h, int c);
+  [DllImport("user32.dll")] static extern bool SetWindowPos(IntPtr h, IntPtr a, int x, int y, int w, int ht, uint f);
+  [DllImport("user32.dll")] static extern bool PrintWindow(IntPtr h, IntPtr dc, uint f);
+  static void Aware() { SetThreadDpiAwarenessContext(new IntPtr(-4)); }   // per skärm (v2)
+  public static string Monitors() {
+    Aware(); var sb = new StringBuilder();
+    EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero, (IntPtr m, IntPtr dc, ref RECT r, IntPtr d) => {
+      var i = new MONINFO(); i.cb = Marshal.SizeOf(typeof(MONINFO)); GetMonitorInfo(m, ref i);
+      sb.Append(i.work.L).Append('\\t').Append(i.work.T).Append('\\t').Append(i.work.R - i.work.L).Append('\\t').Append(i.work.B - i.work.T).Append('\\t').Append((i.flags & 1) != 0 ? 1 : 0).Append('\\n');
+      return true; }, IntPtr.Zero);
+    return sb.ToString();
+  }
+  public static bool Place(long hw, int x, int y, int w, int ht) {
+    Aware(); var h = new IntPtr(hw);
+    if (IsIconic(h) || IsZoomed(h)) ShowWindow(h, 9);
+    for (int k = 0; k < 2; k++) {   // två varv: ett fönster som byter skärm kan byta skalning och storlek på vägen
+      RECT r, e; GetWindowRect(h, out r);
+      if (DwmGetWindowAttribute(h, 9, out e, 16) != 0) e = r;   // osynliga kanter runt fönstret räknas bort
+      int l = e.L - r.L, t = e.T - r.T, rr = r.R - e.R, b = r.B - e.B;
+      SetWindowPos(h, IntPtr.Zero, x - l, y - t, w + l + rr, ht + t + b, 0x0014);
+    }
+    return true;
+  }
+  public static bool Thumb(long hw, string file, int maxW) {
+    Aware(); var h = new IntPtr(hw); if (IsIconic(h)) return false;
+    RECT r, e; GetWindowRect(h, out r); if (DwmGetWindowAttribute(h, 9, out e, 16) != 0) e = r;
+    int w = r.R - r.L, ht = r.B - r.T; if (w < 20 || ht < 20 || w > 16000 || ht > 16000) return false;
+    using (var bmp = new Bitmap(w, ht, PixelFormat.Format32bppArgb)) {
+      using (var g = Graphics.FromImage(bmp)) { var dc = g.GetHdc(); bool ok = PrintWindow(h, dc, 2); g.ReleaseHdc(dc); if (!ok) return false; }
+      var crop = new Rectangle(e.L - r.L, e.T - r.T, e.R - e.L, e.B - e.T); crop.Intersect(new Rectangle(0, 0, w, ht)); if (crop.Width < 20 || crop.Height < 20) return false;
+      double sc = Math.Min(1.0, (double)maxW / crop.Width); int tw = Math.Max(1, (int)(crop.Width * sc)), th = Math.Max(1, (int)(crop.Height * sc));
+      using (var t = new Bitmap(tw, th)) {
+        using (var g2 = Graphics.FromImage(t)) { g2.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBilinear; g2.DrawImage(bmp, new Rectangle(0, 0, tw, th), crop, GraphicsUnit.Pixel); }
+        var enc = Array.Find(ImageCodecInfo.GetImageEncoders(), c => c.MimeType == "image/jpeg"); var ps = new EncoderParameters(1); ps.Param[0] = new EncoderParameter(System.Drawing.Imaging.Encoder.Quality, 72L);
+        t.Save(file + ".tmp", enc, ps);
+      }
+    }
+    if (System.IO.File.Exists(file)) System.IO.File.Delete(file); System.IO.File.Move(file + ".tmp", file);
+    return true;
+  }
 }`;
 let worker = null;
 function psWorker() {   // en PowerShell som tar emot kommandon på rad och svarar med en slutmarkering
@@ -95,7 +146,7 @@ function psWorker() {   // en PowerShell som tar emot kommandon på rad och svar
   p.on('exit', () => { w.dead = true; for (const { res } of w.q) res(''); w.q = []; });
   p.on('error', () => { w.dead = true; });
   const cs = path.join(DIR, 'vwin.cs'); fs.writeFileSync(cs, WIN_CS);
-  p.stdin.write(`[Console]::OutputEncoding = [Text.Encoding]::UTF8; Add-Type -Path '${cs.replace(/'/g, "''")}'\n`);
+  p.stdin.write(`[Console]::OutputEncoding = [Text.Encoding]::UTF8; Add-Type -ReferencedAssemblies System.Drawing -Path '${cs.replace(/'/g, "''")}'\n`);
   return w;
 }
 function psRun(script, timeout = 15000) {
@@ -107,6 +158,19 @@ function psRun(script, timeout = 15000) {
   });
 }
 let wins = { list: [], at: 0, busy: null };
+const THUMBS = path.join(DIR, 'thumbs'); fs.mkdirSync(THUMBS, { recursive: true });
+for (const f of fs.readdirSync(THUMBS)) fs.rmSync(path.join(THUMBS, f), { force: true });   // gamla bilder från förra körningen
+// Zoner på en skärm: [vänster, topp, bredd, höjd] som andel av skärmens arbetsyta (utan Windows aktivitetsfält)
+const ZONES = { full: [0, 0, 1, 1], left: [0, 0, .5, 1], right: [.5, 0, .5, 1], top: [0, 0, 1, .5], bottom: [0, .5, 1, .5],
+  tl: [0, 0, .5, .5], tr: [.5, 0, .5, .5], bl: [0, .5, .5, .5], br: [.5, .5, .5, .5], l3: [0, 0, 1 / 3, 1], m3: [1 / 3, 0, 1 / 3, 1], r3: [2 / 3, 0, 1 / 3, 1] };
+let mons = { list: [], at: 0 };
+async function monitors() {   // skärmarna numrerade från vänster till höger
+  if (Date.now() - mons.at < 10000 && mons.list.length) return mons.list;
+  const out = await psRun('[Console]::Out.Write([VWin]::Monitors())', 8000);
+  const list = out.split('\n').filter(Boolean).map(l => { const [x, y, w, h, pr] = l.split('\t').map(Number); return { x, y, w, h, primary: pr === 1 }; })
+    .filter(m => m.w > 0 && m.h > 0).sort((a, b) => a.x - b.x || a.y - b.y);
+  if (list.length) mons = { list, at: Date.now() }; return mons.list;
+}
 async function loadWindows() {
   if (Date.now() - wins.at < 1500) return wins.list;
   if (!wins.busy) wins.busy = psRun("$o = [VWin]::List(); $ids = @($o -split \"`n\" | Where-Object { $_ } | ForEach-Object { [int]($_.Split(\"`t\")[1]) } | Sort-Object -Unique); " +
@@ -189,6 +253,15 @@ http.createServer(async (req, res) => {
 <button onclick="navigator.clipboard.writeText(document.getElementById('t').textContent).then(()=>this.textContent='Kopierad')" style="font:inherit;padding:8px 18px;background:#04303c;color:#fff;border:1px solid #00d8ff;cursor:pointer">Kopiera koden</button>
 <p style="color:#7fa3b3;font-size:13px">Koden låter V.I.C.T.O.R. i din webbläsare starta program och se öppna fönster på den här datorn. Dela den inte.</p></div></body></html>`);
     }
+    if (p === '/thumb' && req.method === 'GET') {   // förhandsbild av ett öppet fönster (tas högst en gång per halvsekund)
+      if (!tokenOk(url.searchParams.get('t'))) { res.writeHead(401); return res.end(); }
+      const hwnd = +url.searchParams.get('h') || 0, w = (await loadWindows()).find(x => x.hwnd === hwnd);
+      if (!w) { res.writeHead(404); return res.end(); }
+      const f = path.join(THUMBS, hwnd + '.jpg'), size = Math.min(900, Math.max(160, +url.searchParams.get('w') || 400)), st = fs.existsSync(f) ? fs.statSync(f) : null;
+      if (!st || Date.now() - st.mtimeMs > 500) await psRun(`[void][VWin]::Thumb(${hwnd}, '${f.replace(/'/g, "''")}', ${size})`, 8000);
+      if (!fs.existsSync(f)) { res.writeHead(404, { 'Cache-Control': 'no-store' }); return res.end(); }
+      res.writeHead(200, { 'Content-Type': 'image/jpeg', 'Cache-Control': 'no-store' }); return fs.createReadStream(f).pipe(res);
+    }
     if (p === '/icon' && req.method === 'GET') {   // bilder kan inte skicka huvuden, så koden ligger i adressen
       if (!tokenOk(url.searchParams.get('t'))) { res.writeHead(401); return res.end(); }
       const f = iconFile(String(url.searchParams.get('k') || ''));
@@ -199,12 +272,23 @@ http.createServer(async (req, res) => {
     if (!tokenOk((req.headers.authorization || '').replace(/^Bearer\s+/i, ''))) return send(res, 401, { error: 'Fel kopplingskod.' });
     if (p === '/api/ping' && req.method === 'GET') return send(res, 200, { ok: true, host: os.hostname() });
     if (p === '/api/apps' && req.method === 'GET') return send(res, 200, { apps: await loadApps() });
+    if (p === '/api/monitors' && req.method === 'GET') return send(res, 200, { monitors: await monitors(), zones: Object.keys(ZONES) });
     if (p === '/api/windows' && req.method === 'GET') return send(res, 200, { windows: await loadWindows() });
     if (req.method !== 'POST') return send(res, 404, { error: 'Finns inte.' });
     const b = await body(req);
     if (p === '/api/launch') {   // startar bara program som finns i Start-menyns lista, aldrig fria kommandon
       const a = (await loadApps()).find(x => x.id === b.id); if (!a) return send(res, 404, { error: 'Programmet finns inte i Start-menyn längre.' });
       spawn('explorer.exe', ['shell:AppsFolder\\' + a.id], { detached: true, stdio: 'ignore' }).unref(); return send(res, 200, { ok: true });
+    }
+    if (p === '/api/arrange') {   // flytta fönster till skärmzoner enligt regler: [{name, mon, zone}]
+      const mons = await monitors(), list = (wins.at = 0, await loadWindows()), only = Array.isArray(b.hwnds) ? new Set(b.hwnds.map(Number)) : null; let placed = 0;
+      for (const w of list) {
+        const r = (Array.isArray(b.rules) ? b.rules : []).find(x => x && x.name === w.name); if (!r || (only && !only.has(w.hwnd))) continue;
+        const m = mons[+r.mon | 0], z = ZONES[r.zone]; if (!m || !z) continue;
+        const x = Math.round(m.x + m.w * z[0]), y = Math.round(m.y + m.h * z[1]), ww = Math.round(m.w * z[2]), hh = Math.round(m.h * z[3]);
+        await psRun(`[void][VWin]::Place(${w.hwnd}, ${x}, ${y}, ${ww}, ${hh})`, 8000); placed++;
+      }
+      return send(res, 200, { ok: true, placed });
     }
     if (p === '/api/focus' || p === '/api/close') {   // visa eller stäng ett fönster som finns i listan (inga andra)
       wins.at = 0; const list = await loadWindows(), w = list.find(x => (b.hwnd ? x.hwnd === +b.hwnd : x.pid === (+b.pid | 0)));

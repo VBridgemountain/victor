@@ -1,11 +1,12 @@
 {
-    "version":  "1.6.0",
+    "version":  "1.7.0",
     "date":  "2026-11-21",
     "notes":  [
-                  "Importera bokmärken från webbläsaren (.html), mapparna blir glober",
-                  "Aktivitetsfält längst ner med datorns öppna program: klicka för att visa, ✕ för att stänga, dölj det helt om du vill",
-                  "Flera fönster från samma program samlas och kan väljas i en lista",
-                  "Datorbryggan läser fönster mycket snabbare och kan stänga dem"
+                  "Förhandsbilder av öppna fönster som rutor du kan flytta fritt över skärmarna (Inställningar → Fönster)",
+                  "Klicka på en ruta för att visa fönstret, ✕ för att stänga det",
+                  "Ordna fönster: välj skärm och plats per program, med knappen ▦ i aktivitetsfältet",
+                  "Kan ordna nya fönster automatiskt när de öppnas",
+                  "Kräver den nya datorbryggan"
               ],
     "apk":  "https://vbridgemountain.github.io/victor/desktop/victor.apk"
 }

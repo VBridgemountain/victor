@@ -129,6 +129,19 @@ body.tb #taskbar{display:flex} body.tb #readout{bottom:72px} body.tb #ideaBar{bo
 .tbi:hover .x,.tbi .x:focus-visible{opacity:1} .tbi .x:hover{color:var(--warn)}
 #tbMenu{position:fixed;z-index:30;display:none;min-width:240px;max-width:380px;background:rgba(2,8,14,.97);border:1px solid var(--line);padding:4px}
 #tbMenu.on{display:block} #tbMenu .tbi{max-width:none;width:100%}
+#previews{position:fixed;inset:0;z-index:4;pointer-events:none}
+.pv{position:absolute;pointer-events:auto;background:rgba(2,8,14,.88);border:1px solid var(--line);box-shadow:0 6px 24px rgba(0,0,0,.45);display:flex;flex-direction:column}
+.pv.fg{border-color:var(--accent);box-shadow:0 0 18px rgba(var(--rgb),.35)}
+.pvh{display:flex;align-items:center;gap:7px;height:28px;padding:0 4px 0 8px;cursor:grab;touch-action:none;background:var(--panel);border-bottom:1px solid var(--line);font-size:12px;user-select:none}
+.pvh img,.pvh .ph{width:16px;height:16px;flex:none} .pvh .ph{display:grid;place-items:center;font:600 10px var(--mono);color:var(--accent)}
+.pvh span{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pvh button{width:22px;height:22px;border:0;background:none;color:var(--dim);cursor:pointer;font-size:12px} .pvh button:hover{color:var(--warn)}
+.pvb{position:relative;cursor:pointer;background:#000;min-height:60px;display:grid;place-items:center}
+.pvb img{display:block;width:100%;height:auto} .pvb img.old{opacity:.35}
+.pvm{position:absolute;inset:0;display:grid;place-items:center;font:11px var(--mono);letter-spacing:.12em;color:var(--dim);text-transform:uppercase;text-align:center;padding:8px}
+.pvb:hover{outline:1px solid var(--accent)}
+.mons{position:relative;height:120px;margin:6px 0 12px} .mon{position:absolute;border:1px solid var(--accent);background:rgba(var(--rgb),.08);display:grid;place-items:center;font:11px var(--mono);color:var(--text);text-align:center}
+.arr{display:grid;grid-template-columns:1fr 110px 170px;gap:7px;align-items:center;margin-bottom:6px} .arr span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #taskbar .tbx{flex:none;width:26px;height:34px;border:0;background:none;color:var(--dim);cursor:pointer} #taskbar .tbx:hover{color:var(--accent)}
 #levels .hbtn{padding:6px 10px;font-size:10px}
 .hbtn.on,.btn.on{background:rgba(var(--rgb),.34);color:#fff}
@@ -335,7 +348,8 @@ body.hasdock #ovAdd{bottom:138px}
 <div id="apps"></div><div id="ideas"></div><div id="ov"></div><div id="mind"></div>
 <nav id="crumbs" aria-label="Var du är i mindmappen"></nav>
 <form id="ideaBar"><input class="in" id="ideaIn" placeholder="Ny idé eller anteckning i den här globen…" aria-label="Ny idé"><button class="btn">Lägg till</button><button type="button" class="btn on" id="bClaude" title="Få hjälp av Claude med den här grenen">✦ Claude</button></form>
-<nav id="taskbar" aria-label="Öppna program"><div id="tbList"></div><button class="tbx" id="tbHide" title="Dölj aktivitetsfältet (visas igen under Inställningar)" aria-label="Dölj aktivitetsfältet">✕</button></nav><div id="tbMenu" role="menu"></div>
+<div id="previews" aria-label="Förhandsbilder av öppna fönster"></div>
+<nav id="taskbar" aria-label="Öppna program"><div id="tbList"></div><button class="tbx" id="tbArr" title="Ordna fönster på skärmarna" aria-label="Ordna fönster">▦</button><button class="tbx" id="tbHide" title="Dölj aktivitetsfältet (visas igen under Inställningar)" aria-label="Dölj aktivitetsfältet">✕</button></nav><div id="tbMenu" role="menu"></div>
 <div id="levels" role="group" aria-label="Zoomnivå"><button class="hbtn" data-z="0.3">Översikt</button><button class="hbtn" data-z="1">Glob</button><button class="hbtn" data-z="2.6">Inuti</button></div>
 <div class="corner tl"></div><div class="corner tr"></div><div class="corner bl"></div><div class="corner br"></div>
 
@@ -387,7 +401,7 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
    ===================================================================== */
 const KEY = 'jarvis-desktop-v1';
 // Den här versionen av appen. Höj den vid varje ny version; android/build.ps1 skriver den till version.json och APK:n.
-const APP_VERSION = '1.6.0';
+const APP_VERSION = '1.7.0';
 const UPDATE_URL = 'https://vbridgemountain.github.io/victor/desktop/';
 // Finns bara när sidan körs inne i Android-launchern: brygga till telefonens appar (se android/MainActivity.java)
 // Microsoft-inloggningen (widgeten Microsoft 365 admin) öppnas i ett eget fönster och kommer tillbaka hit med ett svar i adressen.
@@ -1996,6 +2010,22 @@ $('#bSettings').onclick = () => {
       el('label', { class: 'row', style: 'cursor:pointer;margin-top:9px;align-items:center' },
         el('input', { type: 'checkbox', class: 'chk', checked: state.taskbar !== false, onchange: e => { state.taskbar = e.target.checked; save(); tbSig = ''; loadTaskbar(); } }),
         'Visa aktivitetsfältet med öppna program längst ner (kräver datorbryggan)')),
+    NATIVE ? null : (() => { const c = pvCfg(); const upd = v => { state.prev = Object.assign(pvCfg(), v); save(); tbSig = ''; syncPreviews(); loadTaskbar(); };
+      return el('div', { class: 'field' }, el('span', { class: 'flabel', text: 'Fönster' }),
+        el('label', { class: 'row', style: 'cursor:pointer;align-items:center' },
+          el('input', { type: 'checkbox', class: 'chk', checked: c.on, onchange: e => { if (e.target.checked && !hTok()) { e.target.checked = false; return openHelperSetup(); } upd({ on: e.target.checked }); } }),
+          'Visa förhandsbilder av öppna fönster som rutor i ' + brand()),
+        el('div', { class: 'row', style: 'margin-top:7px;flex-wrap:wrap;align-items:center' },
+          el('span', { class: 'muted', text: 'Uppdatera' }),
+          el('select', { class: 'in', style: 'width:auto', onchange: e => upd({ every: +e.target.value }) }, [[1, 'varje sekund'], [2, 'varannan sekund'], [5, 'var 5:e sekund'], [10, 'var 10:e sekund']].map(([v, t]) => el('option', { value: v, text: t, selected: c.every === v }))),
+          el('span', { class: 'muted', text: 'Storlek' }),
+          el('select', { class: 'in', style: 'width:auto', onchange: e => { pvEl.textContent = ''; pvTiles.clear(); upd({ size: +e.target.value }); } }, [[240, 'Liten'], [320, 'Mellan'], [480, 'Stor']].map(([v, t]) => el('option', { value: v, text: t, selected: c.size === v }))),
+          el('button', { class: 'btn', text: 'Återställ rutornas platser', onclick: () => { state.prevPos = {}; save(); pvEl.textContent = ''; pvTiles.clear(); syncPreviews(); } })),
+        el('p', { class: 'muted', style: 'margin:6px 0 0', text: 'Blir datorn seg: välj en längre tid eller stäng av förhandsbilderna. Minimerade fönster visar sin senaste bild.' }),
+        el('label', { class: 'row', style: 'cursor:pointer;margin-top:10px;align-items:center' },
+          el('input', { type: 'checkbox', class: 'chk', checked: !!state.winAuto, onchange: e => { state.winAuto = e.target.checked; save(); } }),
+          'Ordna fönster automatiskt på skärmarna när de öppnas'),
+        el('div', { class: 'row', style: 'margin-top:7px' }, el('button', { class: 'btn', text: 'Ordna fönster …', onclick: openArrange }))); })(),
     NATIVE ? el('div', { class: 'field' }, el('span', { class: 'flabel', text: 'Startskärm' }),
       el('button', { class: 'btn', text: 'Välj ' + brand() + ' som startskärm', onclick: () => NATIVE.homeSettings() }))
     : el('div', { class: 'field' }, el('span', { class: 'flabel', text: 'Flytta till en annan enhet' }),
@@ -2046,15 +2076,102 @@ function drawTaskbar() {
     }));
   }
 }
+const pvOn = () => !NATIVE && !!hTok() && !!(state.prev && state.prev.on);
+const arrOn = () => !NATIVE && !!hTok() && !!state.winAuto && (state.winRules || []).length > 0;
+let tbSeen = null;
 async function loadTaskbar() {
   const on = tbOn(); document.body.classList.toggle('tb', on);
-  if (!on || tbBusy || document.hidden) return;
+  if (!pvOn()) syncPreviews();
+  if (!(on || pvOn() || arrOn()) || tbBusy || document.hidden) return;
   tbBusy = true;
   try { const list = (await helper('/api/windows')).windows; helperOk = true;
-    const sig = JSON.stringify(list.map(w => [w.pid, w.hwnd, w.title, w.fg])); if (sig !== tbSig) { tbSig = sig; tbWins = list; drawTaskbar(); } }
+    const sig = JSON.stringify(list.map(w => [w.pid, w.hwnd, w.title, w.fg])); if (sig !== tbSig) { tbSig = sig; tbWins = list; drawTaskbar(); syncPreviews(); }
+    // nya fönster ordnas enligt reglerna (fönster som redan var öppna när appen startade rörs inte)
+    const ids = new Set(list.map(w => w.hwnd));
+    if (tbSeen && arrOn()) { const fresh = list.filter(w => !tbSeen.has(w.hwnd) && state.winRules.some(r => r.name === w.name)).map(w => w.hwnd);
+      if (fresh.length) setTimeout(() => helper('/api/arrange', { rules: state.winRules, hwnds: fresh }).catch(() => {}), 900); }
+    tbSeen = ids; }
   catch { if (tbSig !== 'off') { tbSig = 'off'; tbWins = []; tbList.textContent = ''; tbList.append(el('span', { class: 'muted', style: 'padding:0 8px;font-size:12px', text: 'Datorbryggan svarar inte. Starta den på datorn.' })); } }
   finally { tbBusy = false; }
 }
+/* ---------- Förhandsbilder: levande rutor med de öppna fönstren, som går att flytta fritt över skärmarna ---------- */
+const pvEl = $('#previews'), pvTiles = new Map();
+const pvCfg = () => Object.assign({ on: false, every: 2, size: 320 }, state.prev);
+function syncPreviews() {
+  if (!pvOn()) { if (pvTiles.size) { pvEl.textContent = ''; pvTiles.clear(); } return; }
+  const { size } = pvCfg(), list = tbWins.filter(w => !w.title.startsWith(document.title)), live = new Set(), count = {};
+  state.prevPos = state.prevPos || {};
+  list.forEach((w, n) => {
+    const key = w.name + '#' + (count[w.name] = (count[w.name] || 0) + 1); live.add(w.hwnd);
+    let t = pvTiles.get(w.hwnd);
+    if (!t) {
+      const cols = Math.max(1, Math.floor((innerWidth - 40) / (size + 14))), slot = pvTiles.size, pos = state.prevPos[key] || { x: 20 + (slot % cols) * (size + 14), y: 86 + Math.floor(slot / cols) * (size * 0.62 + 46) };
+      t = { w, key, title: el('span'), shot: el('img', { alt: '', draggable: false, hidden: true }), msg: el('div', { class: 'pvm', text: 'Hämtar bild …' }) };
+      const icon = el('img', { src: hIcon(w.icon), alt: '', draggable: false, onerror: e => e.target.replaceWith(el('span', { class: 'ph', text: (w.name || '?')[0].toUpperCase() })) });
+      const head = el('div', { class: 'pvh', title: 'Dra för att flytta' }, icon, t.title,
+        el('button', { text: '✕', title: 'Stäng fönstret', 'aria-label': 'Stäng fönstret', onclick: e => { e.stopPropagation(); closeWin(t.w); } }));
+      t.node = el('section', { class: 'pv', style: `left:${pos.x}px;top:${pos.y}px;width:${size}px` }, head,
+        el('div', { class: 'pvb', role: 'button', tabIndex: 0, title: 'Visa fönstret', onclick: () => showWin(t.w), onkeydown: e => { if (e.key === 'Enter') showWin(t.w); } }, t.shot, t.msg));
+      head.addEventListener('pointerdown', e => {   // flytta rutan; platsen sparas per program
+        if (e.target.closest('button')) return; e.preventDefault(); head.setPointerCapture(e.pointerId);
+        const ox = e.clientX - t.node.offsetLeft, oy = e.clientY - t.node.offsetTop;
+        const mv = ev => { t.node.style.left = clamp(ev.clientX - ox, 0, innerWidth - 60) + 'px'; t.node.style.top = clamp(ev.clientY - oy, 0, innerHeight - 30) + 'px'; };
+        const up = () => { head.removeEventListener('pointermove', mv); head.removeEventListener('pointerup', up); state.prevPos[t.key] = { x: t.node.offsetLeft, y: t.node.offsetTop }; save(); };
+        head.addEventListener('pointermove', mv); head.addEventListener('pointerup', up);
+      });
+      pvEl.append(t.node); pvTiles.set(w.hwnd, t);
+    }
+    t.w = w; t.key = key; t.title.textContent = w.title; t.node.classList.toggle('fg', !!w.fg); t.node.title = w.title;
+  });
+  for (const [h, t] of pvTiles) if (!live.has(h)) { t.node.remove(); pvTiles.delete(h); }
+}
+let pvBusy = false, pvLast = 0;
+async function refreshPreviews() {   // en bild i taget, så att datorn inte belastas med många samtidigt
+  if (!pvOn() || pvBusy || document.hidden || Date.now() - pvLast < pvCfg().every * 1000 - 50) return;
+  pvBusy = true; pvLast = Date.now();
+  const width = Math.min(900, Math.round(pvCfg().size * Math.min(devicePixelRatio || 1, 2)));
+  try {
+    for (const [h, t] of [...pvTiles]) {
+      const ok = await new Promise(res => { const im = new Image(); im.onload = () => { t.shot.src = im.src; res(true); }; im.onerror = () => res(false);
+        im.src = `${HELPER}/thumb?h=${h}&w=${width}&t=${encodeURIComponent(hTok())}&v=${Date.now()}`; });
+      t.shot.hidden = !t.shot.src; t.shot.classList.toggle('old', !ok); t.msg.hidden = ok;
+      if (!ok) t.msg.textContent = t.shot.src ? 'Minimerat · klicka för att visa' : 'Minimerat eller dolt · klicka för att visa';
+    }
+  } finally { pvBusy = false; }
+}
+setInterval(refreshPreviews, 500);
+addEventListener('resize', () => { for (const t of pvTiles.values()) { t.node.style.left = clamp(t.node.offsetLeft, 0, innerWidth - 60) + 'px'; t.node.style.top = clamp(t.node.offsetTop, 0, innerHeight - 30) + 'px'; } });
+
+/* ---------- Ordna fönster: regler som lägger program på bestämda platser på skärmarna ---------- */
+const ZONE_NAMES = { full: 'Hela skärmen', left: 'Vänster halva', right: 'Höger halva', top: 'Övre halvan', bottom: 'Nedre halvan', tl: 'Övre vänstra hörnet', tr: 'Övre högra hörnet',
+  bl: 'Nedre vänstra hörnet', br: 'Nedre högra hörnet', l3: 'Vänster tredjedel', m3: 'Mittersta tredjedelen', r3: 'Höger tredjedel' };
+async function openArrange() {
+  if (!(await helperConnect())) return openHelperSetup(openArrange);
+  let mons = [], wins = []; try { mons = (await helper('/api/monitors')).monitors; wins = (await helper('/api/windows')).windows; } catch (e) { return toast('FÖNSTER', e.message); }
+  state.winRules = state.winRules || [];
+  const names = [...new Set([...wins.filter(w => !w.title.startsWith(document.title)).map(w => w.name), ...state.winRules.map(r => r.name)])].sort((a, b) => a.localeCompare(b, 'sv'));
+  const minX = Math.min(...mons.map(m => m.x)), minY = Math.min(...mons.map(m => m.y)), maxX = Math.max(...mons.map(m => m.x + m.w)), maxY = Math.max(...mons.map(m => m.y + m.h));
+  const box = el('div', { class: 'mons' }), sc = Math.min(560 / (maxX - minX), 120 / (maxY - minY));
+  mons.forEach((m, i) => box.append(el('div', { class: 'mon', style: `left:${(m.x - minX) * sc}px;top:${(m.y - minY) * sc}px;width:${m.w * sc - 4}px;height:${m.h * sc - 4}px` },
+    el('div', {}, el('b', { text: 'Skärm ' + (i + 1) }), el('br'), m.w + '×' + m.h + (m.primary ? ' · huvudskärm' : '')))));
+  const rule = n => state.winRules.find(r => r.name === n);
+  const setRule = (n, mon, zone) => { state.winRules = state.winRules.filter(r => r.name !== n); if (mon !== '') state.winRules.push({ name: n, mon: +mon, zone }); save(); };
+  const rows = names.map(n => {
+    const r = rule(n), mon = el('select', { class: 'in' }, el('option', { value: '', text: 'Ingen plats' }), mons.map((m, i) => el('option', { value: i, text: 'Skärm ' + (i + 1), selected: r && r.mon === i }))),
+          zone = el('select', { class: 'in', disabled: !r }, Object.entries(ZONE_NAMES).map(([k, t]) => el('option', { value: k, text: t, selected: r ? r.zone === k : k === 'full' })));
+    mon.onchange = zone.onchange = () => { zone.disabled = mon.value === ''; setRule(n, mon.value, zone.value); };
+    return el('div', { class: 'arr' }, el('span', { text: n, title: n }), mon, zone);
+  });
+  const auto = el('input', { type: 'checkbox', class: 'chk', checked: !!state.winAuto, onchange: e => { state.winAuto = e.target.checked; save(); } });
+  openModal('Ordna fönster', el('div', {},
+    el('p', { style: 'margin-top:0', text: 'Välj var varje program ska ligga. Ordna nu flyttar de öppna fönstren dit direkt.' }),
+    box, names.length ? rows : el('p', { class: 'muted', text: 'Inga program är öppna.' }),
+    el('label', { class: 'row', style: 'cursor:pointer;align-items:center;margin:12px 0 4px' }, auto, 'Ordna automatiskt när ett program öppnas'),
+    el('p', { class: 'muted', style: 'margin:0 0 10px', text: 'Flera fönster från samma program hamnar på samma plats. Program som inte vill ändra storlek (vissa spel och dialogrutor) kan stanna där de är.' }),
+    el('div', { class: 'row' }, el('button', { class: 'btn on', text: 'Ordna nu', onclick: async () => {
+      try { const j = await helper('/api/arrange', { rules: state.winRules }); toast('FÖNSTER', j.placed + ' fönster flyttade.'); } catch (e) { toast('FÖNSTER', e.message); } } }))));
+}
+$('#tbArr').onclick = openArrange;
 $('#tbHide').onclick = () => { state.taskbar = false; save(); loadTaskbar(); toast('AKTIVITETSFÄLT', 'Dolt. Visa det igen under Inställningar.'); };
 addEventListener('pointerdown', e => { if (!e.target.closest('#tbMenu,.tbi')) tbMenu.classList.remove('on'); });
 setInterval(loadTaskbar, 2500); document.addEventListener('visibilitychange', loadTaskbar);

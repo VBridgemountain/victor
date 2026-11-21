@@ -116,6 +116,8 @@ En webbsida kan inte se datorns program. Datorbryggan är ett litet hjälpprogra
 - Glober → **+ Lägg till program från datorn**: samma lista som Start-menyn. Tryck för att lägga i globen, tryck igen för att ta bort.
 - Klicka på programmet i globen för att starta det.
 - Widgeten **Öppna program** visar öppna fönster.
+- **Förhandsbilder av fönster** (Inställningar → Fönster): varje öppet fönster visas som en ruta med en levande bild, som du kan dra var som helst över skärmarna. Klicka på rutan för att visa fönstret, ✕ stänger det. Välj hur ofta bilderna uppdateras (1–10 sekunder) och storlek, eller stäng av dem om datorn blir seg. Minimerade fönster går inte att fotografera och visar sin senaste bild.
+- **Ordna fönster** (▦ i aktivitetsfältet eller Inställningar → Fönster): välj skärm och plats (hela, halvor, hörn eller tredjedelar) per program. **Ordna nu** flyttar de öppna fönstren dit, och **Ordna automatiskt** gör det när programmet öppnas.
 - **Aktivitetsfältet** längst ner visar alla öppna fönster, som Windows aktivitetsfält. Klicka för att visa ett fönster, ✕ (eller högerklick) för att stänga det, som att trycka på dess eget kryss. Flera fönster från samma program samlas, och ett klick visar en lista att välja i. Dölj fältet med ✕ längst till höger; visa det igen under Inställningar → Datorbrygga.
 
 **Starta automatiskt vid inloggning**
