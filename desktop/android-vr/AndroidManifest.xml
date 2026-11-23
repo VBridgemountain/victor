@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- V.I.C.T.O.R. VR: liten app för Oculus Go (Android 7.1) och andra headset. Den öppnar V.I.C.T.O.R. i headsetets
+     webbläsare, som har WebXR (en inbyggd webbvy saknar VR-stöd). Syns under "Okända källor" i biblioteket. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="se.noirlab.victor.vr">
+
+    <application
+        android:label="V.I.C.T.O.R. VR"
+        android:icon="@mipmap/ic_launcher">
+
+        <activity
+            android:name=".Launch"
+            android:exported="true"
+            android:theme="@android:style/Theme.NoDisplay"
+            android:excludeFromRecents="true"
+            android:noHistory="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

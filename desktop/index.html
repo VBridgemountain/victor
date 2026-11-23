@@ -420,7 +420,7 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
    ===================================================================== */
 const KEY = 'jarvis-desktop-v1';
 // Den här versionen av appen. Höj den vid varje ny version; android/build.ps1 skriver den till version.json och APK:n.
-const APP_VERSION = '1.16.0';
+const APP_VERSION = '1.16.1';
 const UPDATE_URL = 'https://vbridgemountain.github.io/victor/desktop/';
 // Finns bara när sidan körs inne i Android-launchern: brygga till telefonens appar (se android/MainActivity.java)
 // Microsoft-inloggningen (widgeten Microsoft 365 admin) öppnas i ett eget fönster och kommer tillbaka hit med ett svar i adressen.
@@ -2863,6 +2863,13 @@ const VR = (() => {
   return { start, supported, preview, get active() { return !!session; } };
 })();
 if (/[?&]vrtest/.test(location.search)) setTimeout(() => VR.preview(), 500);
+// Startad från headset-appen V.I.C.T.O.R. VR (?headset): en stor knapp för att gå in i VR (webbläsaren kräver ett tryck för att starta VR)
+if (/[?&]headset/.test(location.search)) VR.supported().then(ok => { if (!ok) return;
+  const box = el('div', { style: 'position:fixed;inset:0;z-index:9000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px;background:rgba(2,6,11,.82);backdrop-filter:blur(4px)' });
+  const go = el('button', { class: 'hbtn', text: 'Gå in i VR', style: 'font-size:34px;padding:26px 64px;letter-spacing:.2em', onclick: () => VR.start().then(() => box.remove()).catch(e => toast('VR', 'VR-läget kunde inte starta: ' + e.message)) });
+  box.append(el('div', { style: 'font:600 26px/1.3 inherit;letter-spacing:.35em;color:var(--accent)', text: 'V.I.C.T.O.R. VR' }), go,
+    el('button', { class: 'hbtn', text: 'Använd utan VR', onclick: () => box.remove() }));
+  document.body.append(box); });
 (async () => { const b = $('#bVR'); if (!b) return;
   if (await VR.supported()) { b.style.display = ''; b.onclick = () => VR.start().catch(e => toast('VR', 'VR-läget kunde inte starta: ' + e.message)); } })();
 </script>

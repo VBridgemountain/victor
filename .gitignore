@@ -10,3 +10,5 @@ desktop/helper/dist/
 
 # Node som hämtas av Starta V.I.C.T.O.R. Server.cmd
 server/runtime/
+desktop/android-vr/build/
+desktop/android-vr/res/mipmap-xxhdpi/ic_launcher.png

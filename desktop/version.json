@@ -1,10 +1,10 @@
 {
-    "version": "1.16.0",
+    "version": "1.16.1",
     "date": "2026-11-23",
     "notes": [
+        "Headset-appen V.I.C.T.O.R. VR för Oculus Go: ladda ner victor-vr.apk, installera, och starta från biblioteket (Okända källor)",
         "VR-läge: med ett headset (t.ex. Oculus Go) svävar globerna runt dig. Peka med handkontrollen och tryck på avtryckaren för att öppna glober, mappar och appar",
-        "Knappen VR syns uppe till höger när webbläsaren har stöd för VR",
-        "Datorbryggan finns nu som färdigt Windows-program: ladda ner, dubbelklicka, klart (ingen Node.js behövs)"
+        "Knappen VR syns uppe till höger när webbläsaren har stöd för VR"
     ],
     "apk": "https://vbridgemountain.github.io/victor/desktop/victor.apk"
 }
