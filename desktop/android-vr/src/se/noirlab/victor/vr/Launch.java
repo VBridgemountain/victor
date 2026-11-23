@@ -13,12 +13,13 @@ import org.json.JSONObject;
 
 // Öppnar V.I.C.T.O.R. i headsetets webbläsare (?headset visar en stor knapp för att gå in i VR) och stänger sig själv.
 // Listan med spel och appar som finns installerade i headsetet skickas med i adressen (#ha=...), så att V.I.C.T.O.R.
-// kan visa dem i globen "Headset". De startas sedan via victorvr://open?pkg=... (se Open.java).
+// kan visa dem i globen "Headset". De startas sedan via tjänsten Bridge (127.0.0.1:8771).
 public class Launch extends Activity {
     static final String URL = "https://vbridgemountain.github.io/victor/desktop/?headset";
 
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
+        try { startService(new Intent(this, Bridge.class)); } catch (Exception ignored) { }
         String url = URL;
         try { url += "#ha=" + Base64.encodeToString(apps().toString().getBytes("UTF-8"), Base64.URL_SAFE | Base64.NO_WRAP | Base64.NO_PADDING); }
         catch (Exception ignored) { }

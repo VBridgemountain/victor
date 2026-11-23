@@ -159,7 +159,7 @@ Installera via USB (headset i utvecklarläge): `adb install -r desktopictor-vr.
 https://vbridgemountain.github.io/victor/desktop/victor-vr.apk. Den finns sedan i biblioteket under **Okända källor**.
 Bygg om: `powershell -ExecutionPolicy Bypass -File desktopndroid-vruild.ps1`.
 Varje gång appen startas skickar den med vilka spel och appar som finns installerade i headsetet. De samlas i globen **Headset**
-och startas direkt därifrån, även i VR-läget (via länkar som `victorvr://open?pkg=...` som appen tar emot). På andra enheter syns
+och startas direkt därifrån, även i VR-läget (appen kör en liten tjänst på 127.0.0.1:8771 i headsetet; webbläsaren får inte själv starta appar). På andra enheter syns
 globen men apparna går bara att starta i headsetet.
 
 Har du kontosynk påslagen får headsetet samma glober som datorn och telefonen.

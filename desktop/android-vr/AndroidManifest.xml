@@ -4,6 +4,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="se.noirlab.victor.vr">
 
+    <uses-permission android:name="android.permission.INTERNET" />
+
     <application
         android:label="V.I.C.T.O.R. VR"
         android:icon="@mipmap/ic_launcher">
@@ -34,5 +36,7 @@
                 <data android:scheme="victorvr" android:host="open" />
             </intent-filter>
         </activity>
+        <!-- liten tjänst på 127.0.0.1:8771 som startar headsetets spel åt V.I.C.T.O.R. -->
+        <service android:name=".Bridge" android:exported="false" />
     </application>
 </manifest>

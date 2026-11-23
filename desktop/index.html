@@ -420,7 +420,7 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
    ===================================================================== */
 const KEY = 'jarvis-desktop-v1';
 // Den här versionen av appen. Höj den vid varje ny version; android/build.ps1 skriver den till version.json och APK:n.
-const APP_VERSION = '1.17.0';
+const APP_VERSION = '1.17.1';
 const UPDATE_URL = 'https://vbridgemountain.github.io/victor/desktop/';
 // Finns bara när sidan körs inne i Android-launchern: brygga till telefonens appar (se android/MainActivity.java)
 // Microsoft-inloggningen (widgeten Microsoft 365 admin) öppnas i ett eget fönster och kommer tillbaka hit med ett svar i adressen.
@@ -753,8 +753,9 @@ function openUrl(url) {
 function openApp(a) {   // en app från telefonen startas via launchern, ett program på datorn via bryggan, allt annat är en länk
   if (a.folder) return enterFolder(a);
   if (a.game) return openGame(a);
-  if (a.hpkg) { if (/OculusBrowser|Pacific|Quest/i.test(navigator.userAgent)) location.href = 'victorvr://open?pkg=' + encodeURIComponent(a.hpkg);
-    else toast('HEADSET', a.name + ' finns i VR-headsetet och startas därifrån.'); return; }
+  if (a.hpkg) { if (!/OculusBrowser|Pacific|Quest/i.test(navigator.userAgent)) return toast('HEADSET', a.name + ' finns i VR-headsetet och startas därifrån.');
+    fetch('http://127.0.0.1:8771/open?pkg=' + encodeURIComponent(a.hpkg)).then(r => r.json()).then(j => { if (j.error) toast('HEADSET', j.error); })
+      .catch(() => toast('HEADSET', 'Starta V.I.C.T.O.R. VR från biblioteket (Okända källor) en gång, så kan spelen startas härifrån.')); return; }
   if (a.prog) { helper('/api/launch', { id: a.prog }).catch(e => toast('PROGRAM', e instanceof TypeError ? 'Datorbryggan är inte igång, så ' + a.name + ' kunde inte startas.' : e.message)); return; }
   if (a.pkg && NATIVE) { if (!NATIVE.launch(a.pkg)) toast('APP', a.name + ' gick inte att starta.'); }
   else openUrl(a.url);
@@ -2876,7 +2877,12 @@ if (/[?&]vrtest/.test(location.search)) setTimeout(() => VR.preview(), 500);
   if (!g) { g = newGlobe('Headset', '#9dff3d'); g.headset = true; state.globes.push(g); }
   const have = new Set(list.map(x => x.p)), old = new Map(g.apps.filter(a => a.hpkg).map(a => [a.hpkg, a]));
   g.apps = g.apps.filter(a => !a.hpkg || have.has(a.hpkg));   // avinstallerade försvinner, egna tillägg och ordning behålls
-  for (const x of list) if (!old.has(x.p)) g.apps.push({ id: uid(), name: String(x.n || x.p).slice(0, 60), hpkg: x.p });
+  // appar utan eget namn har bara paketnamnet (t.ex. com.coplanar.voidracervr): gör ett läsbart namn av sista delen
+  const KNOWN = { voidracervr: 'Void Racer Extreme', starwarsdrb: 'Star Wars: Droid Repair Bay', cinevr: 'CineVR', beatron: 'Beatron', songbeater: 'SongBeater', RealVrFishing: 'Real VR Fishing' };
+  const nice = (n, p) => { if (n && !/^[\w]+(\.[\w]+)+$/.test(n)) return n; const last = p.split('.').pop();
+    return KNOWN[last] || last.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/^./, c => c.toUpperCase()); };
+  for (const x of list) if (!old.has(x.p)) g.apps.push({ id: uid(), name: nice(String(x.n || ''), x.p).slice(0, 60), hpkg: x.p });
+  for (const a of g.apps) if (a.hpkg && /^[\w]+(\.[\w]+)+$/.test(a.name)) a.name = nice('', a.hpkg);
   g.apps.sort((a, b) => (a.hpkg ? 1 : 0) - (b.hpkg ? 1 : 0) || 0);
   save(); buildScene(); })();
 // Startad från headset-appen V.I.C.T.O.R. VR (?headset): en stor knapp för att gå in i VR (webbläsaren kräver ett tryck för att starta VR)
