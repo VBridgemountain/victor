@@ -420,7 +420,7 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
    ===================================================================== */
 const KEY = 'jarvis-desktop-v1';
 // Den här versionen av appen. Höj den vid varje ny version; android/build.ps1 skriver den till version.json och APK:n.
-const APP_VERSION = '1.16.3';
+const APP_VERSION = '1.17.0';
 const UPDATE_URL = 'https://vbridgemountain.github.io/victor/desktop/';
 // Finns bara när sidan körs inne i Android-launchern: brygga till telefonens appar (se android/MainActivity.java)
 // Microsoft-inloggningen (widgeten Microsoft 365 admin) öppnas i ett eget fönster och kommer tillbaka hit med ett svar i adressen.
@@ -753,6 +753,8 @@ function openUrl(url) {
 function openApp(a) {   // en app från telefonen startas via launchern, ett program på datorn via bryggan, allt annat är en länk
   if (a.folder) return enterFolder(a);
   if (a.game) return openGame(a);
+  if (a.hpkg) { if (/OculusBrowser|Pacific|Quest/i.test(navigator.userAgent)) location.href = 'victorvr://open?pkg=' + encodeURIComponent(a.hpkg);
+    else toast('HEADSET', a.name + ' finns i VR-headsetet och startas därifrån.'); return; }
   if (a.prog) { helper('/api/launch', { id: a.prog }).catch(e => toast('PROGRAM', e instanceof TypeError ? 'Datorbryggan är inte igång, så ' + a.name + ' kunde inte startas.' : e.message)); return; }
   if (a.pkg && NATIVE) { if (!NATIVE.launch(a.pkg)) toast('APP', a.name + ' gick inte att starta.'); }
   else openUrl(a.url);
@@ -2774,6 +2776,7 @@ const VR = (() => {
     if (it.type === 'globe') { state.active = it.gi; build({ kind: 'apps', gi: it.gi }); return; }
     if (it.type === 'ctl') { if (it.act === 'exit') return session.end();
       const v = scene.view; return build(v.folder ? { kind: 'apps', gi: v.gi } : { kind: 'globes' }); }
+    if (it.type === 'app' && it.a.hpkg) { openApp(it.a); return; }
     if (it.type === 'app') { const a = it.a;
       if (a.folder) return build({ kind: 'apps', gi: scene.view.gi, folder: a });
       session.end().catch(() => {}).then(() => setTimeout(() => openApp(a), 300)); }   // appen öppnas i den vanliga vyn
@@ -2863,6 +2866,19 @@ const VR = (() => {
   return { start, supported, preview, get active() { return !!session; } };
 })();
 if (/[?&]vrtest/.test(location.search)) setTimeout(() => VR.preview(), 500);
+// Headset-appen skickar med vilka spel och appar som finns installerade i headsetet (#ha=...): de samlas i globen "Headset"
+(() => { const m = /[#&]ha=([A-Za-z0-9_-]+)/.exec(location.hash); if (!m) return;
+  let list; try { const b = atob(m[1].replace(/-/g, '+').replace(/_/g, '/'));
+    list = JSON.parse(decodeURIComponent(Array.from(b, c => '%' + c.charCodeAt(0).toString(16).padStart(2, '0')).join(''))); } catch { return; }
+  history.replaceState(null, '', location.pathname + location.search);
+  if (!Array.isArray(list)) return;
+  let g = state.globes.find(x => x.headset);
+  if (!g) { g = newGlobe('Headset', '#9dff3d'); g.headset = true; state.globes.push(g); }
+  const have = new Set(list.map(x => x.p)), old = new Map(g.apps.filter(a => a.hpkg).map(a => [a.hpkg, a]));
+  g.apps = g.apps.filter(a => !a.hpkg || have.has(a.hpkg));   // avinstallerade försvinner, egna tillägg och ordning behålls
+  for (const x of list) if (!old.has(x.p)) g.apps.push({ id: uid(), name: String(x.n || x.p).slice(0, 60), hpkg: x.p });
+  g.apps.sort((a, b) => (a.hpkg ? 1 : 0) - (b.hpkg ? 1 : 0) || 0);
+  save(); buildScene(); })();
 // Startad från headset-appen V.I.C.T.O.R. VR (?headset): en stor knapp för att gå in i VR (webbläsaren kräver ett tryck för att starta VR)
 if (/[?&]headset/.test(location.search)) VR.supported().then(ok => { if (!ok) return;
   const box = el('div', { style: 'position:fixed;inset:0;z-index:9000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px;background:rgba(2,6,11,.82);backdrop-filter:blur(4px)' });

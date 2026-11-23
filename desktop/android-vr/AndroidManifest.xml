@@ -19,5 +19,20 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- V.I.C.T.O.R. startar headsetets spel och appar med länkar som victorvr://open?pkg=com.oculus.rooms -->
+        <activity
+            android:name=".Open"
+            android:exported="true"
+            android:theme="@android:style/Theme.NoDisplay"
+            android:excludeFromRecents="true"
+            android:noHistory="true">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="victorvr" android:host="open" />
+            </intent-filter>
+        </activity>
     </application>
 </manifest>

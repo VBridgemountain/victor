@@ -158,6 +158,9 @@ V.I.C.T.O.R. har ett VR-läge i webbläsare som stöder WebXR, t.ex. Oculus Brow
 Installera via USB (headset i utvecklarläge): `adb install -r desktopictor-vr.apk`, eller ladda ner
 https://vbridgemountain.github.io/victor/desktop/victor-vr.apk. Den finns sedan i biblioteket under **Okända källor**.
 Bygg om: `powershell -ExecutionPolicy Bypass -File desktopndroid-vruild.ps1`.
+Varje gång appen startas skickar den med vilka spel och appar som finns installerade i headsetet. De samlas i globen **Headset**
+och startas direkt därifrån, även i VR-läget (via länkar som `victorvr://open?pkg=...` som appen tar emot). På andra enheter syns
+globen men apparna går bara att starta i headsetet.
 
 Har du kontosynk påslagen får headsetet samma glober som datorn och telefonen.
 Test utan headset: lägg till `?vrtest` i adressen (eller kör `VR.preview()` i konsolen), så ritas VR-scenen i fönstret med musen som handkontroll.
