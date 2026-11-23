@@ -1,10 +1,10 @@
 {
-    "version":  "1.15.0",
-    "date":  "2026-11-21",
-    "notes":  [
-                  "Datorbryggan finns nu som färdigt Windows-program: ladda ner, dubbelklicka, klart (ingen Node.js behövs)",
-                  "Bryggans startsida har en ruta för att starta den automatiskt med Windows",
-                  "Konto och synk (från 1.14): samma glober på alla dina enheter via en V.I.C.T.O.R. Server"
-              ],
-    "apk":  "https://vbridgemountain.github.io/victor/desktop/victor.apk"
+    "version": "1.16.0",
+    "date": "2026-11-23",
+    "notes": [
+        "VR-läge: med ett headset (t.ex. Oculus Go) svävar globerna runt dig. Peka med handkontrollen och tryck på avtryckaren för att öppna glober, mappar och appar",
+        "Knappen VR syns uppe till höger när webbläsaren har stöd för VR",
+        "Datorbryggan finns nu som färdigt Windows-program: ladda ner, dubbelklicka, klart (ingen Node.js behövs)"
+    ],
+    "apk": "https://vbridgemountain.github.io/victor/desktop/victor.apk"
 }

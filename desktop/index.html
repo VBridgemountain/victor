@@ -379,6 +379,7 @@ body.hasdock #ovAdd{bottom:138px}
   <button class="hbtn" id="bSearch">Sök</button>
   <button class="hbtn" id="bApps">Glober</button>
   <button class="hbtn" id="bSettings">Inställningar</button>
+  <button class="hbtn" id="bVR" style="display:none" title="Gå in i VR med headsetet: globerna svävar runt dig">VR</button>
   <button class="hbtn" id="bFull" title="Helskärm">⛶</button>
 </header>
 
@@ -419,7 +420,7 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
    ===================================================================== */
 const KEY = 'jarvis-desktop-v1';
 // Den här versionen av appen. Höj den vid varje ny version; android/build.ps1 skriver den till version.json och APK:n.
-const APP_VERSION = '1.15.0';
+const APP_VERSION = '1.16.0';
 const UPDATE_URL = 'https://vbridgemountain.github.io/victor/desktop/';
 // Finns bara när sidan körs inne i Android-launchern: brygga till telefonens appar (se android/MainActivity.java)
 // Microsoft-inloggningen (widgeten Microsoft 365 admin) öppnas i ett eget fönster och kommer tillbaka hit med ett svar i adressen.
@@ -2678,6 +2679,192 @@ if (firstRun) {
     el('button', { class: 'btn on', text: 'Starta' })));
   name.focus();
 }
+
+// ================================================================== VR-läge (WebXR): globerna svävar runt dig, peka och välj med handkontrollen
+// Fungerar i headset vars webbläsare har WebXR (Oculus Go/Quest, Pico m.fl.). Ren WebGL 1, inga bibliotek, så att även äldre webbläsare klarar det.
+const VR = (() => {
+  let session = null, gl = null, ref = null, prog = {}, buf = {}, scene = null, hover = null, t0 = 0, texCache = new Map(), dust = null;
+  const TAU2 = Math.PI * 2;
+  // ---- små matrisverktyg (kolumnordning, som WebGL)
+  const mul = (a, b) => { const o = new Float32Array(16); for (let c = 0; c < 4; c++) for (let r = 0; r < 4; r++) { let s = 0; for (let k = 0; k < 4; k++) s += a[k * 4 + r] * b[c * 4 + k]; o[c * 4 + r] = s; } return o; };
+  const trs = (x, y, z, ry, sx, sy) => { const c = Math.cos(ry), s = Math.sin(ry); sy = sy == null ? sx : sy;
+    return new Float32Array([c * sx, 0, -s * sx, 0, 0, sy, 0, 0, s * sx, 0, c * sx, 0, x, y, z, 1]); };
+  const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2], sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+  // ---- shaders
+  const VS_PT = `attribute vec3 p;uniform mat4 P,V,M;uniform float sz,t;varying float f;
+    void main(){float c=cos(t),s=sin(t);vec3 q=vec3(p.x*c-p.z*s,p.y,p.x*s+p.z*c);vec4 w=P*V*M*vec4(q,1.);gl_Position=w;gl_PointSize=max(1.5,sz/w.w);f=.55+.45*q.z;}`;
+  const FS_PT = `precision mediump float;uniform vec3 col;uniform float a;varying float f;
+    void main(){float d=length(gl_PointCoord-.5);if(d>.5)discard;gl_FragColor=vec4(col*f,a*(1.-d*2.));}`;
+  const VS_Q = `attribute vec2 p;uniform mat4 P,V,M;varying vec2 uv;void main(){uv=vec2(p.x+.5,.5-p.y);gl_Position=P*V*M*vec4(p,0.,1.);}`;
+  const FS_Q = `precision mediump float;uniform sampler2D tx;uniform float a;varying vec2 uv;void main(){vec4 c=texture2D(tx,uv);gl_FragColor=vec4(c.rgb,c.a*a);}`;
+  const VS_L = `attribute vec3 p;uniform mat4 P,V;void main(){gl_Position=P*V*vec4(p,1.);gl_PointSize=10.;}`;
+  const FS_L = `precision mediump float;uniform vec3 col;uniform float a;void main(){gl_FragColor=vec4(col,a);}`;
+  function mk(vs, fs) {
+    const sh = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s);
+      if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; };
+    const p = gl.createProgram(); gl.attachShader(p, sh(gl.VERTEX_SHADER, vs)); gl.attachShader(p, sh(gl.FRAGMENT_SHADER, fs)); gl.linkProgram(p);
+    const u = {}; for (const n of ['P', 'V', 'M', 'sz', 't', 'col', 'a', 'tx']) u[n] = gl.getUniformLocation(p, n);
+    return { p, u, at: gl.getAttribLocation(p, 'p') };
+  }
+  const vbo = arr => { const b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(arr), gl.STATIC_DRAW); return b; };
+  // ---- texturer med text/ikon, ritade på en vanlig canvas
+  function tex(key, w, h, draw) {
+    if (texCache.has(key)) return texCache.get(key);
+    const c = document.createElement('canvas'); c.width = w; c.height = h; draw(c.getContext('2d'), w, h);
+    const t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, c);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    texCache.set(key, t); return t;
+  }
+  const rgbOf = g => hexRgb(g && g.color) || hexRgb(state.theme) || [0, 216, 255];
+  const css = (rgb, a) => `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${a})`;
+  const fit = (ctx, text, max, size, weight) => { let s = size; do { ctx.font = `${weight || 600} ${s}px "Segoe UI",system-ui,sans-serif`; s -= 2; } while (ctx.measureText(text).width > max && s > 12); };
+  const labelTex = (text, rgb, sub) => tex('L|' + text + '|' + rgb + '|' + sub, 512, 128, (x, w, h) => {
+    x.textAlign = 'center'; x.textBaseline = 'middle'; x.shadowColor = css(rgb, .9); x.shadowBlur = 14;
+    x.fillStyle = '#eaffff'; fit(x, text, w - 20, 54, 600); x.fillText(text, w / 2, sub ? 46 : h / 2);
+    if (sub) { x.shadowBlur = 0; x.fillStyle = css(rgb, .9); x.font = '500 30px "Segoe UI",system-ui,sans-serif'; x.fillText(sub, w / 2, 98); } });
+  const tileTex = (a, rgb, kind) => tex('T|' + kind + '|' + (a.name || '') + '|' + (a.icon || '') + '|' + rgb, 256, 256, (x, w, h) => {
+    x.fillStyle = css(rgb, kind === 'ctl' ? .18 : .12); x.strokeStyle = css(rgb, .85); x.lineWidth = 5;
+    const r = 34; x.beginPath(); x.moveTo(r, 4); x.arcTo(w - 4, 4, w - 4, h - 4, r); x.arcTo(w - 4, h - 4, 4, h - 4, r); x.arcTo(4, h - 4, 4, 4, r); x.arcTo(4, 4, w - 4, 4, r); x.closePath(); x.fill(); x.stroke();
+    const ic = a.icon && !/^(https?:|data:)/i.test(a.icon) ? a.icon : a.folder ? '🗂️' : a.game ? '🕹️' : (a.name || '?')[0].toUpperCase();
+    x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillStyle = '#eaffff';
+    x.font = `${[...ic].length > 2 ? 64 : 104}px "Segoe UI Emoji","Noto Color Emoji","Segoe UI",sans-serif`; x.fillText(ic, w / 2, 104);
+    fit(x, a.name || '', w - 24, 34, 600); x.fillText(a.name || '', w / 2, 212); });
+  // ---- scenens innehåll
+  function sphere(n) { const a = [], g = Math.PI * (3 - Math.sqrt(5)); for (let i = 0; i < n; i++) { const y = 1 - (i / (n - 1)) * 2, r = Math.sqrt(1 - y * y), th = g * i; a.push(Math.cos(th) * r, y, Math.sin(th) * r); } return a; }
+  function build(view) {   // view: { kind: 'globes' } eller { kind: 'apps', gi, folder }
+    const items = [];
+    if (view.kind === 'globes') {
+      const n = state.globes.length, span = Math.min(TAU2 * .62, n * .62), R = 3;
+      state.globes.forEach((g, i) => { const ang = n === 1 ? 0 : -span / 2 + span * i / (n - 1), rgb = rgbOf(g);
+        items.push({ type: 'globe', g, gi: i, rgb, pos: [R * Math.sin(ang), -.15, -R * Math.cos(ang)], ang, r: .42 }); });
+      items.push({ type: 'ctl', act: 'exit', a: { name: 'Avsluta VR', icon: '⏏' }, rgb: [255, 120, 110], pos: [0, -1.25, -2.2], ang: 0, w: .42, h: .42 });
+    } else {
+      const g = state.globes[view.gi], list = (view.folder ? view.folder.apps : g.apps) || [], rgb = rgbOf(g);
+      // rutorna läggs i rader på en cylinder runt dig; många appar ger fler och mindre rutor per rad
+      const n = list.length, R = 2.6, perRow = n > 24 ? Math.min(14, Math.ceil(n / 5)) : Math.max(4, Math.min(8, Math.ceil(Math.sqrt(n * 2.2))));
+      const rows = Math.ceil(n / perRow) || 1, w = rows > 3 ? .44 : .52, step = (w + .08) / R, gap = w + .1, top = .15 + (rows - 1) * gap / 2;
+      list.forEach((a, i) => { const row = Math.floor(i / perRow), inRow = Math.min(perRow, n - row * perRow), col = i % perRow;
+        const ang = (col - (inRow - 1) / 2) * step;
+        items.push({ type: 'app', a, rgb, pos: [R * Math.sin(ang), top - row * gap, -R * Math.cos(ang)], ang, w, h: w }); });
+      if (!n) items.push({ type: 'label', text: 'Inga appar här än', rgb, pos: [0, .1, -2.6], ang: 0, w: 1.6, h: .4 });
+      items.push({ type: 'label', text: view.folder ? view.folder.name : g.name, sub: view.folder ? g.name : n + ' appar', rgb, pos: [0, top + w / 2 + .32, -2.7], ang: 0, w: 1.8, h: .45 });
+      const cy = Math.min(-1.2, top - (rows - 1) * gap - w / 2 - .45);
+      items.push({ type: 'ctl', act: 'back', a: { name: 'Tillbaka', icon: '↩' }, rgb, pos: [-.3, cy, -2.2], ang: 0, w: .42, h: .42 });
+      items.push({ type: 'ctl', act: 'exit', a: { name: 'Avsluta VR', icon: '⏏' }, rgb: [255, 120, 110], pos: [.3, cy, -2.2], ang: 0, w: .42, h: .42 });
+    }
+    scene = { view, items }; hover = null;
+  }
+  // ---- träff med handkontrollens stråle
+  function pick(o, d) {
+    let best = null, bt = 1e9;
+    for (const it of scene.items) {
+      if (it.type === 'globe') { const oc = sub(o, it.pos), b = dot(oc, d), c = dot(oc, oc) - it.r * it.r * 1.2, disc = b * b - c;
+        if (disc > 0) { const t = -b - Math.sqrt(disc); if (t > 0 && t < bt) { bt = t; best = it; } } }
+      else if (it.type !== 'label') { const N = [-Math.sin(it.ang), 0, Math.cos(it.ang)], dn = dot(d, N); if (Math.abs(dn) < 1e-4) continue;
+        const t = dot(sub(it.pos, o), N) / dn; if (t <= 0 || t >= bt) continue;
+        const P = [o[0] + d[0] * t, o[1] + d[1] * t, o[2] + d[2] * t], rel = sub(P, it.pos), right = [Math.cos(it.ang), 0, Math.sin(it.ang)];
+        if (Math.abs(dot(rel, right)) < it.w / 2 && Math.abs(rel[1]) < it.h / 2) { bt = t; best = it; } }
+    }
+    return best ? { it: best, t: bt } : null;
+  }
+  function choose(it) {
+    if (!it) return;
+    if (it.type === 'globe') { state.active = it.gi; build({ kind: 'apps', gi: it.gi }); return; }
+    if (it.type === 'ctl') { if (it.act === 'exit') return session.end();
+      const v = scene.view; return build(v.folder ? { kind: 'apps', gi: v.gi } : { kind: 'globes' }); }
+    if (it.type === 'app') { const a = it.a;
+      if (a.folder) return build({ kind: 'apps', gi: scene.view.gi, folder: a });
+      session.end().catch(() => {}).then(() => setTimeout(() => openApp(a), 300)); }   // appen öppnas i den vanliga vyn
+  }
+  // ---- ritning
+  function draw(P, V, rays, now) {
+    const t = (now - t0) / 1000;
+    gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE); gl.disable(gl.DEPTH_TEST);
+    // stoft runt omkring
+    let pr = prog.pt; gl.useProgram(pr.p); gl.uniformMatrix4fv(pr.u.P, false, P); gl.uniformMatrix4fv(pr.u.V, false, V);
+    gl.bindBuffer(gl.ARRAY_BUFFER, dust); gl.enableVertexAttribArray(pr.at); gl.vertexAttribPointer(pr.at, 3, gl.FLOAT, false, 0, 0);
+    gl.uniformMatrix4fv(pr.u.M, false, trs(0, 0, 0, 0, 1)); gl.uniform1f(pr.u.t, t * .01); gl.uniform1f(pr.u.sz, 26); gl.uniform3fv(pr.u.col, rgbOf(null).map(v => v / 255)); gl.uniform1f(pr.u.a, .35);
+    gl.drawArrays(gl.POINTS, 0, 2500);
+    // glober
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf.sphere); gl.vertexAttribPointer(pr.at, 3, gl.FLOAT, false, 0, 0);
+    for (const it of scene.items) if (it.type === 'globe') { const h = hover && hover.it === it, s = it.r * (h ? 1.15 : 1);
+      gl.uniformMatrix4fv(pr.u.M, false, trs(it.pos[0], it.pos[1], it.pos[2], 0, s)); gl.uniform1f(pr.u.t, t * (h ? .6 : .25) + it.gi);
+      gl.uniform1f(pr.u.sz, h ? 46 : 34); gl.uniform3fv(pr.u.col, it.rgb.map(v => v / 255)); gl.uniform1f(pr.u.a, h ? 1 : .8); gl.drawArrays(gl.POINTS, 0, 700); }
+    // etiketter och rutor
+    pr = prog.q; gl.useProgram(pr.p); gl.uniformMatrix4fv(pr.u.P, false, P); gl.uniformMatrix4fv(pr.u.V, false, V);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf.quad); gl.enableVertexAttribArray(pr.at); gl.vertexAttribPointer(pr.at, 2, gl.FLOAT, false, 0, 0); gl.uniform1i(pr.u.tx, 0);
+    const quad = (tx, x, y, z, ang, w, h, a) => { gl.bindTexture(gl.TEXTURE_2D, tx); gl.uniformMatrix4fv(pr.u.M, false, trs(x, y, z, ang, w, h)); gl.uniform1f(pr.u.a, a); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4); };
+    for (const it of scene.items) { const h = hover && hover.it === it, k = h ? 1.12 : 1;
+      if (it.type === 'globe') quad(labelTex(it.g.name, it.rgb, flatApps(it.g).length ? flatApps(it.g).length + ' appar' : ''), it.pos[0], it.pos[1] - it.r - .22, it.pos[2], -it.ang, 1.2, .3, h ? 1 : .85);
+      else if (it.type === 'label') quad(labelTex(it.text, it.rgb, it.sub), it.pos[0], it.pos[1], it.pos[2], -it.ang, it.w, it.h, 1);
+      else quad(tileTex(it.a, it.rgb, it.type), it.pos[0], it.pos[1], it.pos[2], -it.ang, it.w * k, it.h * k, h ? 1 : .82); }
+    // strålar från handkontrollerna
+    pr = prog.l; gl.useProgram(pr.p); gl.uniformMatrix4fv(pr.u.P, false, P); gl.uniformMatrix4fv(pr.u.V, false, V);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE); gl.uniform3fv(pr.u.col, rgbOf(null).map(v => v / 255));
+    for (const r of rays) { const len = r.hit ? r.hit.t : 4, e = [r.o[0] + r.d[0] * len, r.o[1] + r.d[1] * len, r.o[2] + r.d[2] * len];
+      gl.bindBuffer(gl.ARRAY_BUFFER, buf.line); gl.bufferSubData(gl.ARRAY_BUFFER, 0, new Float32Array([...r.o, ...e]));
+      gl.enableVertexAttribArray(pr.at); gl.vertexAttribPointer(pr.at, 3, gl.FLOAT, false, 0, 0);
+      gl.uniform1f(pr.u.a, .7); gl.drawArrays(gl.LINES, 0, 2); if (r.hit) { gl.uniform1f(pr.u.a, 1); gl.drawArrays(gl.POINTS, 1, 1); } }
+  }
+  function init() {
+    prog = { pt: mk(VS_PT, FS_PT), q: mk(VS_Q, FS_Q), l: mk(VS_L, FS_L) };
+    buf = { sphere: vbo(sphere(700)), quad: vbo([-.5, -.5, .5, -.5, -.5, .5, .5, .5]), line: vbo([0, 0, 0, 0, 0, 1]) };
+    const dd = []; for (let i = 0; i < 2500; i++) { const u = Math.random() * 2 - 1, th = Math.random() * TAU2, r = 6 + Math.random() * 14, s = Math.sqrt(1 - u * u); dd.push(Math.cos(th) * s * r, u * r, Math.sin(th) * s * r); }
+    dust = vbo(dd); t0 = performance.now(); texCache = new Map();
+    build({ kind: 'globes' });
+  }
+  // Förhandsvisning i ett vanligt fönster (för test utan headset): musen är handkontrollen, klick väljer. ?vrtest i adressen.
+  function preview() {
+    const cv = document.createElement('canvas'); cv.style.cssText = 'position:fixed;inset:0;width:100vw;height:100vh;z-index:99999;cursor:crosshair';
+    document.body.append(cv); cv.width = innerWidth; cv.height = innerHeight;
+    gl = cv.getContext('webgl', { antialias: true }); init(); session = { end: () => Promise.resolve(cv.remove()) };
+    const f = 1 / Math.tan(.6), asp = cv.width / cv.height, n = .05, fa = 100;
+    const P = new Float32Array([f / asp, 0, 0, 0, 0, f, 0, 0, 0, 0, (fa + n) / (n - fa), -1, 0, 0, 2 * fa * n / (n - fa), 0]), V = trs(0, 0, 0, 0, 1);
+    let mouse = [0, 0, -1];
+    cv.onmousemove = e => { const x = (e.clientX / cv.width * 2 - 1) * asp / f, y = -(e.clientY / cv.height * 2 - 1) / f, l = Math.hypot(x, y, 1); mouse = [x / l, y / l, -1 / l]; };
+    cv.onclick = () => choose(hover && hover.it);
+    const loop = now => { if (!cv.isConnected) { session = null; return; } requestAnimationFrame(loop);
+      const o = [0, -.02, 0], hit = pick(o, mouse); hover = hit; frame.rays = [{ o, d: mouse, hit }];
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, cv.width, cv.height); gl.clearColor(.008, .02, .04, 1); gl.clear(gl.COLOR_BUFFER_BIT); draw(P, V, frame.rays, now); };
+    requestAnimationFrame(loop);
+  }
+  function frame(now, fr) {
+    if (!session) return; session.requestAnimationFrame(frame);
+    const pose = fr.getViewerPose(ref); if (!pose) return;
+    const layer = session.renderState.baseLayer, rays = [];
+    for (const src of session.inputSources) { const rp = fr.getPose(src.targetRaySpace, ref); if (!rp) continue;
+      const m = rp.transform.matrix, o = [m[12], m[13], m[14]], d = [-m[8], -m[9], -m[10]];
+      if (src.targetRayMode === 'gaze' && session.inputSources.length > 1) continue;
+      const hit = pick(o, d); rays.push({ o, d, hit, src }); }
+    hover = rays.length ? rays[0].hit : null; frame.rays = rays;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, layer.framebuffer); gl.clearColor(.008, .02, .04, 1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    for (const v of pose.views) { const vp = layer.getViewport(v); gl.viewport(vp.x, vp.y, vp.width, vp.height); draw(v.projectionMatrix, v.transform.inverse.matrix, rays, now); }
+  }
+  async function start() {
+    if (session) return;
+    const cv = document.createElement('canvas');
+    gl = cv.getContext('webgl', { xrCompatible: true, antialias: true, alpha: false });
+    if (!gl) throw new Error('WebGL saknas.');
+    session = await navigator.xr.requestSession('immersive-vr');
+    try {
+      if (gl.makeXRCompatible) await gl.makeXRCompatible();
+      session.updateRenderState({ baseLayer: new XRWebGLLayer(session, gl) });
+      ref = await session.requestReferenceSpace('local');
+      init();
+      session.addEventListener('select', e => { const r = (frame.rays || []).find(x => x.src === e.inputSource) || (frame.rays || [])[0]; choose(r && r.hit && r.hit.it); });
+      session.addEventListener('end', () => { session = null; gl = null; texCache = new Map(); save(); buildScene && buildScene(); });
+      session.requestAnimationFrame(frame);
+    } catch (e) { session.end().catch(() => {}); session = null; throw e; }
+  }
+  async function supported() { try { return !!(navigator.xr && await navigator.xr.isSessionSupported('immersive-vr')); } catch { return false; } }
+  return { start, supported, preview, get active() { return !!session; } };
+})();
+if (/[?&]vrtest/.test(location.search)) setTimeout(() => VR.preview(), 500);
+(async () => { const b = $('#bVR'); if (!b) return;
+  if (await VR.supported()) { b.style.display = ''; b.onclick = () => VR.start().catch(e => toast('VR', 'VR-läget kunde inte starta: ' + e.message)); } })();
 </script>
 </body>
 </html>

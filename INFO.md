@@ -143,6 +143,20 @@ Ta bort autostarten med `node helper.js --no-autostart`.
 
 ---
 
+## 4b. VR-läge (Oculus Go och andra headset)
+
+V.I.C.T.O.R. har ett VR-läge i webbläsare som stöder WebXR, t.ex. Oculus Browser på **Oculus Go** (provat: Oculus Browser 9.1) och Quest.
+
+1. Öppna **https://vbridgemountain.github.io/victor/desktop/** i headsetets webbläsare.
+2. Tryck på **VR** uppe till höger. Knappen syns bara där VR stöds.
+3. Globerna svävar i en båge runt dig. Peka med handkontrollen och tryck på **avtryckaren** för att öppna en glob.
+   Apparna lägger sig som rutor runt dig; mappar (t.ex. Klassiker) öppnas på samma sätt.
+4. **Tillbaka** går ett steg upp, **Avsluta VR** (eller headsetets tillbakaknapp) lämnar VR.
+   Väljer du en app lämnas VR och appen öppnas i den vanliga vyn.
+
+Har du kontosynk påslagen får headsetet samma glober som datorn och telefonen.
+Test utan headset: lägg till `?vrtest` i adressen (eller kör `VR.preview()` i konsolen), så ritas VR-scenen i fönstret med musen som handkontroll.
+
 ## 5. Widgets
 
 | Widget | Visar | Kräver |
